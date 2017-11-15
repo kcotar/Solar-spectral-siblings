@@ -1,0 +1,21 @@
+# PyCharm folder
+.idea
+
+# Comipled code
+*.pyc
+
+# Datasets
+*.csv
+*.fits
+*.vot
+*.dat
+*.nwk
+*.txt
+*.meg
+
+# Images
+*.jpg
+*.png
+
+# Hidden files
+.fuse*

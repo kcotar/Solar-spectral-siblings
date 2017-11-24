@@ -45,13 +45,13 @@ s_conv_end = np.sqrt(s_galah_end**2 - s_ref_end**2)
 print s_conv_start, s_conv_end
 
 # convolve solar spectrum
-# kernel_widths = np.linspace(s_conv_start, s_conv_end, len(y))
-# y_conv1 = varcon.varconvolve(x, y, kernel, kernel_widths/2.)
+kernel_widths = np.linspace(s_conv_start, s_conv_end, len(y))
+y_conv1 = varcon.varconvolve(x, y, kernel, kernel_widths/2.)
 # export convolved spectra
-# txt = open('solar_spectra_conv.txt', 'w')
-# for i_l in range(len(x)):
-#     txt.write(str(x[i_l])+' '+str(y_conv1[i_l])+'\n')
-# txt.close()
+txt = open('solar_spectra_conv.txt', 'w')
+for i_l in range(len(x)):
+    txt.write(str(x[i_l])+' '+str(y_conv1[i_l])+'\n')
+txt.close()
 
 # idx_g1 = np.isfinite(solar_g1[:, 1])
 # g1_y = solar_g1[:, 1][idx_g1]
@@ -70,7 +70,7 @@ print s_conv_start, s_conv_end
 
 # plot everything
 plt.plot(x, y, c='black', lw=2)
-# plt.plot(x, y_conv1, c='red', lw=2)
+plt.plot(x, y_conv1, c='red', lw=2)
 # plt.plot(x, y_conv2, c='green', lw=2)
 # plt.plot(x, y_conv3, c='orange', lw=2)
 # plt.plot(x, y_conv4, c='yellow', lw=2)

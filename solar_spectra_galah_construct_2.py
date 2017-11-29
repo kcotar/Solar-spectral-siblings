@@ -46,7 +46,7 @@ to_read_row = np.where(idx_rows)[0]
 print 'Number of solar spectra:', len(to_read_row)
 
 # output 100 sobject_ids from random solar spectra
-# s_ids = galah_param['sobject_id'][list(np.int64(np.random.rand(200)*len(galah_param)))]
+# s_ids = galah_param['sobject_id'][list(np.int64(np.random.rand(250)*len(galah_param)))]
 # print ','.join([str(s) for s in s_ids])
 # raise SystemExit
 
@@ -89,7 +89,7 @@ for ccd in [1, 2, 3, 4]:
         flux[0] = spectra_normalize(wvl[0], flux[0], steps=35, sigma_low=1.5, sigma_high=2.8, order=29, n_min_perc=3.,
                                     return_fit=False, func='poly')
         # resample read spectra to the common wvl step found in reference solar spectra
-        flux_res = spectra_resample(flux[0], wvl[0], solar_ref_wvl, k=3)
+        flux_res = spectra_resample(flux[0], wvl[0], solar_ref_wvl, k=1)
         # store to the array
         # galah_solar[i_s_obj, :] = flux_res
 

@@ -71,20 +71,33 @@ for ccd in [1, 2, 3, 4]:
             wvl[0] = wvl[0][idx_wvl_use]
             flux[0] = flux[0][idx_wvl_use]
 
-        # flux_fit1 = spectra_normalize(wvl[0], flux[0], steps=35, sigma_low=1.5, sigma_high=2., order=29, n_min_perc=3.,
-        #                               return_fit=False, func='poly')
-        # flux_fit2 = spectra_normalize(wvl[0], flux[0], steps=35, sigma_low=1.5, sigma_high=3., order=29, n_min_perc=3.,
-        #                               return_fit=False, func='poly')
-        # # flux_fit3, idx_fit3 = spectra_normalize(wvl[0], flux[0], steps=11, sigma_low=1., sigma_high=1.5, order=11, n_min_perc=10.,
-        # #                               return_fit=False, cheb=True)
-        # # plt.plot(wvl[0], flux[0], c='black')
-        # plt.plot(wvl[0], flux_fit1, c='red', alpha=0.3)
-        # plt.plot(wvl[0], flux_fit2, c='green', alpha=0.3)
-        # plt.axhline(y=1., c='black', alpha=0.3)
-        # plt.ylim((0,1.1))
-        # plt.show()
-        # plt.close()
-        # continue
+        # init fit
+        flux[0] = spectra_normalize(wvl[0], flux[0], steps=5, sigma_low=1.5, sigma_high=2.5, order=1, n_min_perc=5.,
+                                    return_fit=False, func='poly')
+
+        flux_fit1 = spectra_normalize(wvl[0], flux[0], steps=3, sigma_low=1.8, sigma_high=3., order=3, n_min_perc=5.,
+                                      return_fit=True, func='spline', window=5)
+        flux_fit2 = spectra_normalize(wvl[0], flux[0], steps=25, sigma_low=1.8, sigma_high=3., order=17, n_min_perc=5.,
+                                      return_fit=True, func='poly')
+        plt.plot(wvl[0], flux[0], c='black', lw=1)
+        plt.plot(wvl[0], flux_fit1, c='red', alpha=0.5, lw=2)
+        plt.plot(wvl[0], flux_fit2, c='green', alpha=0.5, lw=2)
+        plt.ylim((0.4, 1.2))
+        plt.show()
+        plt.close()
+
+        # flux_fit3 = spectra_normalize(wvl[0], flux[0], steps=5, sigma_low=2., sigma_high=3., order=3, n_min_perc=5.,
+        #                               return_fit=True, func='spline', window=5)
+        # flux_fit4 = spectra_normalize(wvl[0], flux[0], steps=7, sigma_low=2., sigma_high=3., order=3, n_min_perc=5.,
+        #                               return_fit=True, func='spline', window=5)
+
+        flux[0] = flux[0]/flux_fit2
+        plt.plot(wvl[0], flux[0], c='black', lw=1)
+        # plt.plot(wvl[0], flux_fit3, c='red', alpha=0.5, lw=2)
+        # plt.plot(wvl[0], flux_fit4, c='green', alpha=0.5, lw=2)
+        plt.ylim((0.4, 1.2))
+        plt.show()
+        continue
 
         flux[0] = spectra_normalize(wvl[0], flux[0], steps=35, sigma_low=1.5, sigma_high=2.8, order=29, n_min_perc=3.,
                                     return_fit=False, func='poly')

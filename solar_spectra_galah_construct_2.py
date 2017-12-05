@@ -2,6 +2,8 @@ import imp
 from astropy.table import Table
 from socket import gethostname
 from scipy.signal import correlate
+from scipy.signal import argrelextrema, medfilt
+from scipy.interpolate import LSQUnivariateSpline, UnivariateSpline
 from lmfit.models import LinearModel, GaussianModel, VoigtModel, LorentzianModel
 
 import matplotlib.pyplot as plt
@@ -25,6 +27,9 @@ from spectra_collection_functions import *
 # some settings
 min_wvl = list([4710, 5640, 6475, 7700])
 max_wvl = list([4915, 5885, 6750, 7900])
+
+spline_mask = [[4845, 4875],
+               [6542, 6582]]
 
 # reference solar spectra
 print 'Read reference Solar spectra'
@@ -53,13 +58,14 @@ print 'Number of solar spectra:', len(to_read_row)
 # galah_param = galah_param[list(np.int64(np.random.rand(500)*len(galah_param)))]
 
 # do the whole procedure for every spectra and every ccd
-for ccd in [1, 2, 3, 4]:
+for ccd in [1,2,3,4]:
     print 'Band', ccd
     idx_solar_sub = np.logical_and(solar_ref_wvl_all >= min_wvl[ccd-1], solar_ref_wvl_all <= max_wvl[ccd-1])
     solar_ref_flux = solar_ref_flux_all[idx_solar_sub]
     solar_ref_wvl = solar_ref_wvl_all[idx_solar_sub]
     wvl_step = solar_ref_wvl[1] - solar_ref_wvl[0]
     galah_solar = np.ndarray((len(galah_param), len(solar_ref_wvl)))
+    galah_solar.fill(np.nan)
 
     for i_s_obj in range(len(galah_param)):
         s_obj = galah_param[i_s_obj]['sobject_id']
@@ -75,32 +81,63 @@ for ccd in [1, 2, 3, 4]:
         flux[0] = spectra_normalize(wvl[0], flux[0], steps=5, sigma_low=1.5, sigma_high=2.5, order=1, n_min_perc=5.,
                                     return_fit=False, func='poly')
 
-        flux_fit1 = spectra_normalize(wvl[0], flux[0], steps=3, sigma_low=1.8, sigma_high=3., order=3, n_min_perc=5.,
-                                      return_fit=True, func='spline', window=5)
+        # flux_fit1 = spectra_normalize(wvl[0], flux[0], steps=3, sigma_high=1.8, order=3, n_min_perc=5.,
+        #                               return_fit=True, func='spline', window=5)
         flux_fit2 = spectra_normalize(wvl[0], flux[0], steps=25, sigma_low=1.8, sigma_high=3., order=17, n_min_perc=5.,
                                       return_fit=True, func='poly')
-        plt.plot(wvl[0], flux[0], c='black', lw=1)
-        plt.plot(wvl[0], flux_fit1, c='red', alpha=0.5, lw=2)
-        plt.plot(wvl[0], flux_fit2, c='green', alpha=0.5, lw=2)
-        plt.ylim((0.4, 1.2))
-        plt.show()
-        plt.close()
+        # plt.plot(wvl[0], flux[0], c='black', lw=1)
+        # plt.plot(wvl[0], flux_fit1, c='red', alpha=0.5, lw=2)
+        # plt.plot(wvl[0], flux_fit2, c='green', alpha=0.5, lw=2)
+        # plt.ylim((0.4, 1.2))
+        # plt.show()
+        # plt.close()
+        flux[0] /= flux_fit2
 
-        # flux_fit3 = spectra_normalize(wvl[0], flux[0], steps=5, sigma_low=2., sigma_high=3., order=3, n_min_perc=5.,
-        #                               return_fit=True, func='spline', window=5)
-        # flux_fit4 = spectra_normalize(wvl[0], flux[0], steps=7, sigma_low=2., sigma_high=3., order=3, n_min_perc=5.,
-        #                               return_fit=True, func='spline', window=5)
+        flux_med = np.median(flux[0])
+        idx_use = flux[0] > flux_med
+        arg_peaks = argrelextrema(flux[0], np.greater, order=2)
+        arg_peaks_2 = []
+        d = 2.5
+        i = wvl[0][0]
+        for k in arg_peaks[0]:
+            if (wvl[0][k] - i) > d:
+                arg_peaks_2.append(k)
+                i = wvl[0][k]
 
-        flux[0] = flux[0]/flux_fit2
-        plt.plot(wvl[0], flux[0], c='black', lw=1)
-        # plt.plot(wvl[0], flux_fit3, c='red', alpha=0.5, lw=2)
-        # plt.plot(wvl[0], flux_fit4, c='green', alpha=0.5, lw=2)
-        plt.ylim((0.4, 1.2))
-        plt.show()
-        continue
+        # flux_fit3 = spectra_normalize(wvl[0][arg_peaks], flux[0][arg_peaks], steps=3, sigma_low=1., sigma_high=2., order=17, n_min_perc=5.,
+        #                               return_fit=True, func='poly', window=3)
+        # flux_fit4 = spectra_normalize(wvl[0][arg_peaks], flux[0][arg_peaks], steps=3, sigma_low=1., sigma_high=2., order=2, n_min_perc=5.,
+        #                               return_fit=True, func='spline', window=3)
 
-        flux[0] = spectra_normalize(wvl[0], flux[0], steps=35, sigma_low=1.5, sigma_high=2.8, order=29, n_min_perc=3.,
-                                    return_fit=False, func='poly')
+        # determine knots
+        idx_knots = wvl[0] < 0.
+        idx_knots[arg_peaks_2] = True
+        # print 'Knots:', np.sum(idx_knots)
+        idx_knots = np.logical_and(flux[0] > flux_med, idx_knots)
+        # print 'Knots:', np.sum(idx_knots)
+        try:
+            spl2 = LSQUnivariateSpline(wvl[0][idx_use], flux[0][idx_use], t=wvl[0][idx_knots], k=3)
+        except:
+            print 'Failed'
+            continue
+        flux_fit5 = spl2(wvl[0])
+        flux_fit5[flux_fit5 < flux_med] = flux_med
+
+        for mask_wvl in spline_mask:
+            flux_fit5[np.logical_and(wvl[0]>mask_wvl[0], wvl[0]<mask_wvl[1])] = 1.
+
+        # median filter normalization function
+        # flux_fit5 = medfilt(flux_fit5, 5)
+
+        flux[0] /= flux_fit5
+        # plt.scatter(wvl[0][idx_use], flux[0][idx_use], c='black', alpha=1, s=4)
+        # plt.plot(wvl[0], flux_fit5, c='red', alpha=0.5, lw=2)
+        # plt.ylim((0.85, 1.15))
+        # plt.plot(wvl[0], flux[0], c='black', alpha=0.2, lw=2)
+        # # plt.ylim((0.4, 1.2))
+        # plt.show()
+        # continue
+
         # resample read spectra to the common wvl step found in reference solar spectra
         flux_res = spectra_resample(flux[0], wvl[0], solar_ref_wvl, k=1)
         # store to the array
@@ -193,10 +230,11 @@ for ccd in [1, 2, 3, 4]:
     galah_solar_median = np.nanmedian(galah_solar, axis=0)
 
     out_file = galah_data_input + 'Solar_data/'
-    out_file += 'b' + str(ccd) + '_solar_galah_ext0.txt'
+    out_file += 'b' + str(ccd) + '_solar_galah_ext0_2.txt'
     txt = open(out_file, 'w')
     for i_l in range(len(solar_ref_wvl)):
         txt.write(str(solar_ref_wvl[i_l]) + ' ' + str(galah_solar_median[i_l]) + '\n')
     txt.close()
+
 
 

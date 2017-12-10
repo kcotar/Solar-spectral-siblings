@@ -19,6 +19,7 @@ def kernel(s):
     return g / np.sum(g)
 
 data_input_dir = '/home/klemen/GALAH_data/Solar_data/'
+galah_linelist = Table.read('/home/klemen/GALAH_data/GALAH_Cannon_linelist_newer.csv')
 
 solar_ref = pd.read_csv(data_input_dir + 'solar_spectra.txt', header=None, delimiter=' ', na_values='nan').values
 suffix = '_ext0_2'
@@ -117,7 +118,7 @@ for i_b in range(4):
     y_off_perwvl = (1. - 1. * np.arange(np.sum(idx_sol_sub)) / np.sum(idx_sol_sub)) * flux_offset_amp[i_b] + flux_offset[i_b]
     solar_flux_norm_offset = spectra_normalize(solar_wvl[idx_sol_sub], solar_flx[idx_sol_sub] - y_off_perwvl, steps=st, sigma_low=sl, sigma_high=sh, order=ord, func='poly')
 
-    plt.plot(x[idx_ref_sub], y_conv1_norm, c='red', lw=2)
+    plt.plot(x[idx_ref_sub], y_conv1_norm, c='black', lw=2)
     plt.plot(solar_wvl[idx_sol_sub], solar_flux_norm_offset, c='blue', lw=2)
 
     # export results
@@ -126,6 +127,11 @@ for i_b in range(4):
     for i_l in range(len(solar_flux_norm_offset)):
         txt.write(str(solar_wvl[idx_sol_sub][i_l])+' '+str(solar_flux_norm_offset[i_l])+'\n')
     txt.close()
+
+    d_wvl = 0.1
+    for line in galah_linelist:
+        if line['line_centre'] <solar_wvl[idx_sol_sub][-1] and line['line_centre'] > solar_wvl[idx_sol_sub][0]:
+            plt.axvspan(line['line_start'] - d_wvl, line['line_end'] + d_wvl, lw=0, color='black', alpha=0.2)
 
     # print '-----', i_b, '-----'
     # idx_sum = y_conv1_norm < 0.95
@@ -136,7 +142,7 @@ for i_b in range(4):
     #     print dy_amp, np.nansum(np.abs(y_conv1_norm - solar_flux_norm_offset)[idx_sum])
     #     plt.plot(solar_wvl[idx_sol_sub], solar_flux_norm_offset, c='blue', lw=2)
     plt.ylim(0.3, 1.1)
-    # plt.show()
+    plt.show()
     plt.close()
 #
 # plt.plot(x, spectra_normalize(x, y_conv1, steps=st, sigma_low=sl, sigma_high=sh, order=ord, func='poly'), c='red', lw=2)

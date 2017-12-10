@@ -9,6 +9,31 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from scipy.spatial.distance import *
+# braycurtis(u, v[, w]) 	Computes the Bray-Curtis distance between two 1-D arrays.
+# canberra(u, v[, w]) 	Computes the Canberra distance between two 1-D arrays.
+# chebyshev(u, v) 	Computes the Chebyshev distance.
+# cityblock(u, v[, w]) 	Computes the City Block (Manhattan) distance.
+# correlation(u, v[, w, centered]) 	Computes the correlation distance between two 1-D arrays.
+# cosine(u, v[, w]) 	Computes the Cosine distance between 1-D arrays.
+# euclidean(u, v[, w]) 	Computes the Euclidean distance between two 1-D arrays.
+# mahalanobis(u, v, VI) 	Computes the Mahalanobis distance between two 1-D arrays.
+# minkowski(u, v[, p, w]) 	Computes the Minkowski distance between two 1-D arrays.
+# seuclidean(u, v, V) 	Returns the standardized Euclidean distance between two 1-D arrays.
+# sqeuclidean(u, v[, w]) 	Computes the squared Euclidean distance between two 1-D arrays.
+# wminkowski(u, v, p, w) 	Computes the weighted Minkowski distance between two 1-D arrays.
+#
+# Distance functions between two boolean vectors (representing sets) u and v. As in the case of numerical vectors, pdist is more efficient for computing the distances between all pairs.
+# dice(u, v[, w]) 	Computes the Dice dissimilarity between two boolean 1-D arrays.
+# hamming(u, v[, w]) 	Computes the Hamming distance between two 1-D arrays.
+# jaccard(u, v[, w]) 	Computes the Jaccard-Needham dissimilarity between two boolean 1-D arrays.
+# kulsinski(u, v[, w]) 	Computes the Kulsinski dissimilarity between two boolean 1-D arrays.
+# rogerstanimoto(u, v[, w]) 	Computes the Rogers-Tanimoto dissimilarity between two boolean 1-D arrays.
+# russellrao(u, v[, w]) 	Computes the Russell-Rao dissimilarity between two boolean 1-D arrays.
+# sokalmichener(u, v[, w]) 	Computes the Sokal-Michener dissimilarity between two boolean 1-D arrays.
+# sokalsneath(u, v[, w]) 	Computes the Sokal-Sneath dissimilarity between two boolean 1-D arrays.
+# yule(u, v[, w]) 	Computes the Yule dissimilarity between two boolean 1-D arrays.
+
 # -----------------------------------
 # --------- Functions ---------------
 # -----------------------------------
@@ -93,10 +118,12 @@ if pc_name == 'gigli' or pc_name == 'klemen-P5K-E':
     galah_data_input = '/home/klemen/GALAH_data/'
     imp.load_source('helper_functions', '../Carbon-Spectra/helper_functions.py')
     imp.load_source('spectra_collection_functions', '../Carbon-Spectra/spectra_collection_functions.py')
+    imp.load_source('distances', '../tSNE_test/distances.py')
 else:
     galah_data_input = '/data4/cotar/'
 from helper_functions import *
 from spectra_collection_functions import *
+from distances import *
 
 # -----------------------------------
 # --------- Settings ----------------
@@ -119,18 +146,20 @@ solar_wvl = np.hstack((solar_g1[:, 0], solar_g2[:, 0], solar_g3[:, 0], solar_g4[
 solar_flx = np.hstack((solar_g1[:, 1], solar_g2[:, 1], solar_g3[:, 1], solar_g4[:, 1]))
 
 # downscale Solar spectra for faster processing
-every_nth_pixel = 8
+every_nth_pixel = 6
 solar_wvl = solar_wvl[::every_nth_pixel]
 solar_flx = solar_flx[::every_nth_pixel]
 
 # data-table settings
 data_date = '20171111'
 galah_param_file = 'sobject_iraf_52_reduced_'+data_date+'.fits'
+cannon_param_file = 'sobject_iraf_iDR2_171103_cannon.fits'
 
 # select ok objects
 print 'Reading and determining usable twilight flats for Solar statistics determination'
 galah_linelist = Table.read(galah_data_input + 'GALAH_Cannon_linelist.csv')
 galah_param = Table.read(galah_data_input + galah_param_file)
+cannon_param = Table.read(galah_data_input + cannon_param_file)
 idx_rows = np.logical_and(galah_param['red_flag'] == 64, galah_param['snr_c1_iraf'] > 50)
 idx_rows = np.logical_and(idx_rows, galah_param['flag_guess'] == 0)
 idx_rows = np.logical_and(idx_rows, galah_param['sobject_id'] > 140301000000000)
@@ -148,13 +177,27 @@ logg_solar = np.nanmedian(galah_param[idx_rows]['logg_guess'])
 logg_solar_std = np.nanstd(galah_param[idx_rows]['logg_guess'])
 feh_solar = np.nanmedian(galah_param[idx_rows]['feh_guess'])
 feh_solar_std = np.nanstd(galah_param[idx_rows]['feh_guess'])
-print 'Solar parameters:', teff_solar, '+/-', teff_solar_std, ',  ', logg_solar, '+/-', logg_solar_std, ',  ', feh_solar, '+/-', feh_solar_std
+print 'Solar parameters - guess:', teff_solar, '+/-', teff_solar_std, ',  ', logg_solar, '+/-', logg_solar_std, ',  ', feh_solar, '+/-', feh_solar_std
+
+# same for Cannon
+idx_row_cannon = np.in1d(cannon_param['sobject_id'],galah_param[idx_rows]['sobject_id'])
+teff_solar_c = np.nanmedian(cannon_param[idx_row_cannon]['Teff_cannon'])
+teff_solar_std_c = np.nanstd(cannon_param[idx_row_cannon]['Teff_cannon'])
+logg_solar_c = np.nanmedian(cannon_param[idx_row_cannon]['Logg_cannon'])
+logg_solar_std_c = np.nanstd(cannon_param[idx_row_cannon]['Logg_cannon'])
+feh_solar_c = np.nanmedian(cannon_param[idx_row_cannon]['Feh_cannon'])
+feh_solar_std_c = np.nanstd(cannon_param[idx_row_cannon]['Feh_cannon'])
+print 'Solar parameters - cannon:', teff_solar_c, '+/-', teff_solar_std_c, ',  ', logg_solar_c, '+/-', logg_solar_std_c, ',  ', feh_solar_c, '+/-', feh_solar_std_c
 
 # Search for objects with similar physical properties
-idx_solar_like = np.logical_and(np.abs(galah_param['teff_guess'] - teff_solar) < teff_solar_std*1.5,
-                                np.abs(galah_param['logg_guess'] - logg_solar) < logg_solar_std*1.5)
-idx_solar_like = np.logical_and(idx_solar_like, galah_param['red_flag'] == 0)
-idx_solar_like = np.logical_and(idx_solar_like, galah_param['snr_c2_iraf'] > 20)
+# atomatic parameter selection
+# idx_solar_like = np.logical_and(np.abs(galah_param['teff_guess'] - teff_solar) < teff_solar_std*1.5,
+#                                 np.abs(galah_param['logg_guess'] - logg_solar) < logg_solar_std*1.5)
+# manual parameter selection
+idx_solar_like = (np.abs(cannon_param['Teff_cannon']-5605) < 200) & (np.abs(cannon_param['Logg_cannon']-4.21) < 0.3) & (np.abs(cannon_param['Feh_cannon']-(-0.14)) < 0.3)
+#
+idx_solar_like = np.logical_and(idx_solar_like, cannon_param['red_flag'] == 0)
+idx_solar_like = np.logical_and(idx_solar_like, cannon_param['snr_c2_iraf'] > 25)
 n_solar_like = np.sum(idx_solar_like)
 print 'Solar like by parameters:', n_solar_like
 
@@ -163,17 +206,17 @@ print 'Solar like by parameters:', n_solar_like
 # -----------------------------------
 
 solar_like_sobjects = galah_param['sobject_id'][idx_solar_like]
-sim_results = Table(names=('sobject_id', 'dist_mean', 'dist_std', 'dist_b1', 'dist_b2', 'dist_b3', 'dist_b4'),
-                    dtype=('int64', 'float64', 'float64', 'float64', 'float64', 'float64', 'float64'))
+sim_results = Table(names=('sobject_id', 'braycurtis', 'canberra', 'chebyshev', 'cityblock', 'correlation', 'mahalanobis', 'minkowski','seuclidean','sqeuclidean','wminkowski','hamming'),
+                    dtype=('int64', 'float64', 'float64', 'float64', 'float64', 'float64', 'float64', 'float64', 'float64', 'float64', 'float64', 'float64'))
 
 file_out_fits = 'solar_similarity.fits'
 
-move_to_dir('Distance_spectra_selected')
+move_to_dir('MultiDistance_solar_spectra')
 
 # solar_like_sobjects = [160426005501042,170112001601216,170801004001010,170509004701028,171027002801397,170909002601089,160916004301242,160513002601086,161106002601077,150211004701110,160402004101021,151219003601245,150901000601193,170509005201063,161115002701019,161107001601133,150103004501206,170509004701096,160108003601136,150427004801275,160327006101097,170602003701147,170517001801299,160401004401064,170906003601002,170206005701110,160513002101209,161118004701221,170107004801249,140209001701187,140806002301191,160328003201333,150411006101130,160520002601397,170602006201184,160524006101090,170514002401099,160817002601198,161118004001114,170510004801244,170515006101072,160424004201234,140415002401342,170907002601114,161007002801397,161213004101187,171102005001020,151111002101170,160813003601074,170510001801331,170121002201177,170601003101229,170911002101145,161104002301194,160530005501014,161106003101031,150830005101337,170313001601013,170910004101092,170601003101179,170109002801065,140808004701129,160327003601122,150411004101331,150211004701179,170711004001148,160919001601330,160815004301329,160401004401168,150409004601199,140607000701025,150103003501108,170510002301079,161105003101025,170122002101017,140409003001378,141103003601053,160520003101160,151110002601078,170512000101244,140711002901298,170516003601221,161007003301369,140807005001217,150103004001346,170724004601092,160402004101104,170312001601218,141102003201127,150207005101248,170511001101086,170220003601186,160814000101228,150101004001039,150601004801369,170912002401246,140812003801356,170117002601213,170219003101017,160522006101021,170512000701198,150108001001167,170122002101290,161105003101238,160130005801117,170802002101225,160524004201389,170118001701346,160130004101262,150412003101062,150830005601079,150112002501171,140711003401047,170217004001356,150108002801008,161009002601357,170106004601076,151009003101098,170506004401238,150208002701189,150903002401220,150103004501019,161013003201073,140409003601076,170829001901077,161013003801334,150831004001118,140708000601373,140310003301075,170912001901323,150829004301108,140710006101115,160109003301105,150602004901396,150412002101315,160524004201163,160531002601078,160108002601310,171102003301055,160110003601106,150412003601054,160527002101312,170128003401173,140316002301154,140311009101067,140811005001213,131123003501359,140713004001103,170128002101119,140814004301124]
 # solar_like_sobjects = solar_like_sobjects[np.int64(np.random.rand(50)*len(solar_like_sobjects))]
 
-for s_obj in solar_like_sobjects[20:]:
+for s_obj in solar_like_sobjects:
     print 'Evaluating', s_obj
     # get spectra of all bands for observed objects
     read_ext = 0
@@ -282,30 +325,36 @@ for s_obj in solar_like_sobjects[20:]:
     #     plt.savefig(str(s_obj) + '_sim_hist.png', dpi=400)
     #     plt.close()
 
-    spectra_similarity = 0.
-    spectra_similarity_per_band = list([])
+    pix_ref = list([])
+    pix_spec = list([])
     for i_c in range(4):
         idx_ref = np.logical_and(solar_wvl >= min_wvl[i_c], solar_wvl <= max_wvl[i_c])
+        abs_lines_cols = np.where(idx_lines_mask[idx_ref])[0]
         # print flux[i_c], wvl[i_c], solar_wvl[idx_ref]
         flux_b_res = spectra_resample(flux[i_c], wvl[i_c], solar_wvl[idx_ref], k=1)
         spectra_diff = solar_flx[idx_ref] - flux_b_res
-        abs_lines_cols = np.where(idx_lines_mask[idx_ref])[0]
-        spectra_eucl_dist = np.sum(spectra_diff[abs_lines_cols] ** 2)
-        spectra_similarity += spectra_eucl_dist
-        spectra_similarity_per_band.append(spectra_eucl_dist)
-        # plt.plot(solar_wvl[idx_ref], solar_flx[idx_ref], c='red')
-        # plt.plot(solar_wvl[idx_ref], flux_b_res, c='black')
-        # for line in galah_linelist:
-        #     if line['line_centre'] < solar_wvl[idx_ref][-1] and line['line_centre'] > solar_wvl[idx_ref][0]:
-        #         plt.axvspan(line['line_start'] - d_wvl, line['line_end'] + d_wvl, lw=0, color='black', alpha=0.2)
-        # plt.show()
-        # plt.close()
 
-    spectra_similarity = np.sqrt(spectra_similarity)
-    sim_results.add_row([s_obj, spectra_similarity, 0., spectra_similarity_per_band[0], spectra_similarity_per_band[1],
-                         spectra_similarity_per_band[2], spectra_similarity_per_band[3]])
+        pix_ref.append(solar_flx[idx_ref][abs_lines_cols])
+        pix_spec.append(flux_b_res[abs_lines_cols])
 
-# check results
+    # compute different distance meassurements
+    pix_ref = np.hstack(pix_ref)
+    pix_spec = np.hstack(pix_spec)
+
+    sim_results.add_row([s_obj,
+                         braycurtis(pix_ref, pix_spec),
+                         canberra(pix_ref, pix_spec),
+                         chebyshev(pix_ref, pix_spec),
+                         cityblock(pix_ref, pix_spec),
+                         correlation(pix_ref, pix_spec),
+                         np.nan,  # mahalanobis(pix_ref, pix_spec),
+                         minkowski(pix_ref, pix_spec, 1.),
+                         np.nan,  # seuclidean(pix_ref, pix_spec),
+                         sqeuclidean(pix_ref, pix_spec),
+                         np.nan,  # wminkowski(pix_ref, pix_spec),
+                         hamming(pix_ref, pix_spec)])
+
+# check output file with results
 if os.path.isfile(file_out_fits):
     os.remove(file_out_fits)
 sim_results.write(file_out_fits)

@@ -48,7 +48,7 @@ def kernel_params_ok(p):
         return False
     if not 1e-8 < amp2 < 1e-4:
         return False
-    if not 1 < rad2 < 50:
+    if not 1 < rad2 < 35:
         return False
     return True
 
@@ -82,14 +82,16 @@ def lnprob_gp(params, data, wvl, data_std):
         return -np.inf
 
 
-def fit_gp_kernel(init_guess, data, wvl, nwalkers=32, n_threds=1, n_burn=75, data_std=None):
+def fit_gp_kernel(init_guess, data, wvl, nwalkers=32, n_threds=1, n_burn=75, data_std=None,
+                  n_per_burn=15, exit_lnp=5e3):
+    n_burn_steps = round(n_burn/n_per_burn)
     ndim = len(init_guess)
 
     given_guess = np.array(init_guess)
     # add random amount of noise to the data
-    p0 = [given_guess + 1e-4 * np.random.randn(ndim) for i_w in range(nwalkers)]
+    # p0 = [given_guess + 1e-4 * np.random.randn(ndim) for i_w in range(nwalkers)]
     # multiply by the random amount of noise and add to the data - better for parameters of unequal values
-    perc_rand = 20
+    perc_rand = 20.
     p0 = [given_guess + given_guess * np.random.randn(ndim) * perc_rand/100. for i_w in range(nwalkers)]  #
 
     # initialize emcee sampler
@@ -97,8 +99,16 @@ def fit_gp_kernel(init_guess, data, wvl, nwalkers=32, n_threds=1, n_burn=75, dat
 
     print(' Running burn-in')
     time_1 = time()
-    p0, lnp, _ = sampler.run_mcmc(p0, n_burn)
-    p = p0[np.argmax(lnp)]
+    for i_b in range(n_burn_steps):
+        print '  Run:', i_b+1
+        if i_b == 0:
+            p0, lnp, _ = sampler.run_mcmc(p0, n_per_burn)
+        else:
+            p0, lnp, _ = sampler.run_mcmc(None, n_per_burn)
+        # test exit conditions
+        if (lnp > exit_lnp).all():
+            break
+
     time_2 = time()
     print '  {:.1f} min'.format((time_2-time_1)/60.)
 
@@ -132,7 +142,8 @@ def compute_distances(obs, obs_std, orig, d=1.):
                     np.max(spec_diff * dist_weight),  # weighted chebyshev
                     sqeuclidean(obs, orig, w=dist_weight),
                     np.sum(np.sqrt(spec_diff**2. * dist_weight)),  # euclidean(pix_ref, pix_spec, w=dist_weight),
-                    np.sum(spec_diff**2. * dist_weight)]
+                    np.sum(spec_diff**2. * dist_weight),
+                    np.abs(np.sum(1. - obs) - np.sum(1. - orig))]
     return results_list
 
 
@@ -167,7 +178,7 @@ from spectra_collection_functions import *
 # --------- Settings ----------------
 # -----------------------------------
 d_wvl = 0.0
-save_plots = True
+save_plots = False
 min_wvl = list([4725, 5665, 6485, 7700])
 max_wvl = list([4895, 5865, 6725, 7875])
 
@@ -175,10 +186,10 @@ GP_compute = False
 save_gp_params = True
 n_threads = 20
 n_walkers = [2*n_threads, 2*n_threads, 2*n_threads, 2*n_threads]
-n_steps = [30, 30, 30, 30]
+n_steps = [40, 40, 40, 40]
 
 # evaluate spectrum
-n_noise_samples = 250
+n_noise_samples = 100
 noise_power = 0
 
 # reference solar spectra
@@ -210,6 +221,9 @@ cannon_param = Table.read(galah_data_input + cannon_param_file)
 idx_rows = np.logical_and(galah_param['red_flag'] == 64, galah_param['snr_c1_iraf'] > 50)
 idx_rows = np.logical_and(idx_rows, galah_param['flag_guess'] == 0)
 idx_rows = np.logical_and(idx_rows, galah_param['sobject_id'] > 140301000000000)
+
+# linelist subset if nedeed
+galah_linelist = galah_linelist[galah_linelist['Element'] == 'Fe']
 
 # linelist mask
 idx_lines_mask = solar_wvl < 0.
@@ -247,6 +261,8 @@ idx_solar_like = np.logical_and(idx_solar_like, cannon_param['red_flag'] == 0)
 # snr selection
 idx_solar_like = np.logical_and(idx_solar_like, cannon_param['snr_c2_iraf'] > 15)
 # idx_solar_like = np.logical_and(idx_solar_like, cannon_param['snr_c2_iraf'] <= 25)
+idx_solar_like = np.logical_and(idx_solar_like, cannon_param['sobject_id'] > 140301000000000)
+
 n_solar_like = np.sum(idx_solar_like)
 print 'Solar like by parameters:', n_solar_like
 
@@ -255,7 +271,7 @@ print 'Solar like by parameters:', n_solar_like
 # -----------------------------------
 
 solar_like_sobjects = cannon_param['sobject_id'][idx_solar_like]
-sim_metrices = ['braycurtis', 'canberra', 'chebyshev', 'cityblock', 'correlation', 'cosine', 'minkowski','wchebyshev','sqeuclidean','euclidean','chi2']
+sim_metrices = ['braycurtis', 'canberra', 'chebyshev', 'cityblock', 'correlation', 'cosine', 'minkowski','wchebyshev','sqeuclidean','euclidean','chi2', 'EW']
 sim_metrices_std = [m+'_std' for m in sim_metrices]
 sim_dtypes = ['float64' for i in range(2*len(sim_metrices))]
 sim_results = Table(names=np.hstack(('sobject_id', sim_metrices, sim_metrices_std)),
@@ -263,17 +279,22 @@ sim_results = Table(names=np.hstack(('sobject_id', sim_metrices, sim_metrices_st
 
 file_out_fits = 'solar_similarity_narrow.fits'
 
-move_to_dir(out_dir+'Distances_SNRadded_test')
+dir_suffix = '_weighted-p'+str(noise_power)+'_EW_Fe'
+if GP_compute:
+    move_to_dir(out_dir + 'Distances_GP' + dir_suffix)
+else:
+    move_to_dir(out_dir + 'Distances_SNRadded' + dir_suffix)
+
 
 # solar_like_sobjects = [
 #
 # ]
 
-# n_rand = 200
+# n_rand = 2000
 # solar_like_sobjects = solar_like_sobjects[np.int64(np.random.rand(n_rand)*len(solar_like_sobjects))]
 
 txt_out = 'GP_fit_res.txt'
-for s_obj in solar_like_sobjects[:25]:
+for s_obj in solar_like_sobjects:
     print 'Evaluating', s_obj
     galah_object = galah_param[galah_param['sobject_id'] == s_obj]
     # get spectra of all bands for observed objects
@@ -322,9 +343,6 @@ for s_obj in solar_like_sobjects[:25]:
             flux_b_res[flux_b_res > 1.15] = 1.15
             flux_b_res[flux_b_res < 0] = 0.
 
-            if not evaluate_spectrum(flux_b_res[abs_lines_cols], flux_std_b_res[abs_lines_cols]):
-                continue
-
             # determine spectrum difference and its variance
             diff = (solar_flx[idx_ref] - flux_b_res)
             diff_var = np.nanvar(diff)
@@ -332,7 +350,7 @@ for s_obj in solar_like_sobjects[:25]:
             # determine kernel parameters trough emcee fit
             print ' Running emcee'
             # emcee_fit_px = 100
-            sampler, fit_res, fit_prob = fit_gp_kernel([diff_var, 0.008, 1e-5, 15],
+            sampler, fit_res, fit_prob = fit_gp_kernel([diff_var/2., 0.0025, 1e-5, 15],
                                                        diff, solar_wvl[idx_ref], data_std=None,  # data_std=flux_std_b_res,
                                                        nwalkers=n_walkers[i_c], n_threds=n_threads, n_burn=n_steps[i_c])
 
@@ -386,7 +404,7 @@ for s_obj in solar_like_sobjects[:25]:
         # save fit res
         if save_gp_params:
             txt = open(txt_out, 'a')
-            gp_res_string = str(s_obj) + ',' + str(galah_object['snr_c2_iraf'].data) + ','.join([str(v) for v in np.array(gp_final_res).flatten()])
+            gp_res_string = str(s_obj) + ',' + str(galah_object['snr_c2_iraf'].data[0]) + ','.join([str(v) for v in np.array(gp_final_res).flatten()])
             txt.write(gp_res_string + '\n')
             txt.close()
 
@@ -397,9 +415,6 @@ for s_obj in solar_like_sobjects[:25]:
             # print flux[i_c], wvl[i_c], solar_wvl[idx_ref]
             flux_b_res = spectra_resample(flux[i_c], wvl[i_c], solar_wvl[idx_ref], k=1)
             flux_std_b_res = spectra_resample(flux_std[i_c], wvl[i_c], solar_wvl[idx_ref], k=1)
-
-            if not evaluate_spectrum(flux_b_res[abs_lines_cols], flux_std_b_res[abs_lines_cols]):
-                continue
 
             # generate poissonian noise to make a spectrum with snr into a spectrum with target snr
             snr_ref = np.inf
@@ -421,13 +436,26 @@ for s_obj in solar_like_sobjects[:25]:
     pix_spec = np.hstack(pix_spec)
     pix_std = np.hstack(pix_std)
 
+    if not evaluate_spectrum(pix_spec, flux_std):
+        continue
+
     # iterate and add noise to observed spectrum
     spectrum_distances = np.zeros((n_noise_samples, len(sim_metrices)))
     for i_snr in range(n_noise_samples):
         # determine weights for the distance computation (different approaches)
         spectrum_distances[i_snr, :] = compute_distances(pix_spec, pix_std, pix_ref_noise[i_snr, :] + pix_ref, d=noise_power)
+        if save_plots:
+            plt.plot(pix_ref_noise[i_snr, :] + pix_ref, lw=0.2, alpha=0.01, c='blue')
     # add agregated results to final table
     sim_results.add_row(np.hstack([s_obj, np.nanmean(spectrum_distances, axis=0), np.nanstd(spectrum_distances, axis=0)]))
+    if save_plots:
+        plt.plot(pix_spec, lw=0.5, alpha=1, c='black')
+        plt.ylim((0.6, 1.2))
+        plt.xlim(0, len(pix_spec))
+        plt.tight_layout()
+        # plt.show()
+        plt.savefig(str(s_obj) + '_' + str(galah_object['snr_c2_iraf'].data[0])+'.png', dpi=550)
+        plt.close()
 
 # check output file with results
 if os.path.isfile(file_out_fits):

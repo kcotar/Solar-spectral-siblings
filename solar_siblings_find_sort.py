@@ -3,7 +3,7 @@ from astropy.table import Table, join
 import matplotlib.pyplot as plt
 import numpy as np
 
-chdir('Distances_SNRadded_weighted-p1')
+chdir('Distances_SNRadded_weighted-p0_EW_Fe')
 sim_res = Table.read('solar_similarity_narrow.fits')
 
 galah_data_input = '/home/klemen/data4_mount/'
@@ -15,23 +15,24 @@ scores = np.arange(len(sim_res))+1
 params_joined = join(galah_params, sim_res, keys='sobject_id')
 for i_b in [2,3]:
     for metric in sim_metrics:
-        metric_values = params_joined[metric]
+        metric_values = params_joined[metric]#/params_joined[metric+'_std']
         if np.sum(np.isfinite(metric_values)) <= 0:
             continue
         snr_col = 'snr_c'+str(i_b)+'_iraf'
         snr_values = params_joined[snr_col]
         plt.scatter(snr_values, metric_values, lw=0, s=2)
-        y_perc = np.percentile(metric_values, 500./len(metric_values)*100)
+        # y_perc = np.percentile(metric_values, 500./len(metric_values)*100)
         plt.ylim(0, np.nanpercentile(metric_values, 92))
         plt.title(metric+' band:'+str(i_b))
-        plt.axhline(y=y_perc, c='black')
+        # plt.axhline(y=y_perc, c='black')
         plt.xlim(0, np.nanpercentile(snr_values, 99.8))
         plt.xlabel(snr_col)
         plt.ylabel(metric)
-        plt.show()
-        # plt.savefig(metric+'_b'+str(i_b)+'.png', dpi=300)
+        # plt.show()
+        plt.savefig(metric+'_b'+str(i_b)+'.png', dpi=300)
         plt.close()
 
+sim_metrics = [s for s in sim_metrics if '_std' not in s]
 for metric in sim_metrics:
     print '-----------------------------'
     print metric

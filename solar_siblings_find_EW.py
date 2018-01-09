@@ -1,24 +1,38 @@
 from solar_siblings_functions import *
 
+# PC hostname
+pc_name = gethostname()
+
+# input data
+if pc_name == 'gigli' or pc_name == 'klemen-P5K-E':
+    dr52_dir = '/media/storage/HERMES_REDUCED/dr5.2/'
+    galah_data_input = '/home/klemen/data4_mount/'
+    out_dir = ''
+    imp.load_source('helper_functions', '../Carbon-Spectra/helper_functions.py')
+    imp.load_source('spectra_collection_functions', '../Carbon-Spectra/spectra_collection_functions.py')
+else:
+    dr52_dir = '/data4/cotar/dr5.2/'
+    out_dir = '/data4/cotar/'
+    galah_data_input = '/data4/cotar/'
+from helper_functions import *
+from spectra_collection_functions import *
 
 # -----------------------------------
 # --------- Settings ----------------
 # -----------------------------------
-process_bands = np.array([1,2,3,4])  # in range 1...4
-
 d_wvl = 0.0
-save_plots = True
-min_wvl = np.array([4725, 5665, 6485, 7700])[process_bands-1]
-max_wvl = np.array([4895, 5865, 6725, 7875])[process_bands-1]
+save_plots = False
+min_wvl = list([4725, 5665, 6485, 7700])
+max_wvl = list([4895, 5865, 6725, 7875])
 
-GP_compute = True
+GP_compute = False
 save_gp_params = True
 n_threads = 20
-n_walkers = np.array([2*n_threads, 2*n_threads, 2*n_threads, 2*n_threads])[process_bands-1]
-n_steps = np.array([40, 40, 40, 40])[process_bands-1]
+n_walkers = [2*n_threads, 2*n_threads, 2*n_threads, 2*n_threads]
+n_steps = [40, 40, 40, 40]
 
 # evaluate spectrum
-n_noise_samples = 25
+n_noise_samples = 100
 noise_power = 0
 
 # reference solar spectra
@@ -95,7 +109,7 @@ print 'Solar like by parameters:', n_solar_like
 # -----------------------------------
 
 solar_like_sobjects = cannon_param['sobject_id'][idx_solar_like]
-sim_metrices = ['braycurtis', 'canberra', 'chebyshev', 'cityblock', 'correlation', 'cosine', 'minkowski','wchebyshev','sqeuclidean','euclidean','chi2', 'EW']
+sim_metrices = list(np.unique(galah_linelist['Element']))
 sim_metrices_std = [m+'_std' for m in sim_metrices]
 sim_dtypes = ['float64' for i in range(2*len(sim_metrices))]
 sim_results = Table(names=np.hstack(('sobject_id', sim_metrices, sim_metrices_std)),
@@ -103,7 +117,7 @@ sim_results = Table(names=np.hstack(('sobject_id', sim_metrices, sim_metrices_st
 
 file_out_fits = 'solar_similarity_narrow.fits'
 
-dir_suffix = '_weighted-p'+str(noise_power)+'_test-SNR-norm-ndata-b2-snrnone'
+dir_suffix = '_weighted-p'+str(noise_power)+'_EW_all'
 if GP_compute:
     move_to_dir(out_dir + 'Distances_GP' + dir_suffix)
 else:
@@ -114,8 +128,8 @@ else:
 #
 # ]
 
-n_rand = 25
-solar_like_sobjects = solar_like_sobjects[np.int64(np.random.rand(n_rand)*len(solar_like_sobjects))]
+# n_rand = 2000
+# solar_like_sobjects = solar_like_sobjects[np.int64(np.random.rand(n_rand)*len(solar_like_sobjects))]
 
 txt_out = 'GP_fit_res.txt'
 for s_obj in solar_like_sobjects:
@@ -124,14 +138,14 @@ for s_obj in solar_like_sobjects:
     # get spectra of all bands for observed objects
     read_ext = 0
     # flux, wvl = get_spectra_dr52(str(s_obj), bands=[1, 2, 3, 4], root=dr52_dir, extension=read_ext, individual=False)
-    flux, wvl, flux_std = get_spectra_dr52(str(s_obj), bands=process_bands, root=dr52_dir, extension=read_ext,
+    flux, wvl, flux_std = get_spectra_dr52(str(s_obj), bands=[1, 2, 3, 4], root=dr52_dir, extension=read_ext,
                                            individual=False, read_sigma=True)
     if len(flux) <= 0:
         continue
     if read_ext == 0:
         # normalize flux
         try:
-            for i_c in range(len(process_bands)):
+            for i_c in range(4):
                 # ------ NORM v1 - high order polynomial, many steps
                 # flux[i_c] = spectra_normalize(wvl[i_c], flux[i_c], steps=35, sigma_low=1.5, sigma_high=2.8, order=29,
                 #                               n_min_perc=3.,  return_fit=False, func='poly')
@@ -147,6 +161,7 @@ for s_obj in solar_like_sobjects:
             print ' -> Something wrong with spectra or reading'
             continue
 
+    pix_wvl = list([])
     pix_ref = list([])
     pix_ref_noise = list([])
     pix_spec = list([])
@@ -155,7 +170,7 @@ for s_obj in solar_like_sobjects:
         gp_final_res = list([])
         # Start GP process for every band in spectrum independently
 
-        for i_c in range(len(process_bands)):
+        for i_c in range(4):
             # define subset of spectra to be compared to reference solar spectrum
             idx_ref = np.logical_and(solar_wvl >= min_wvl[i_c], solar_wvl <= max_wvl[i_c])
             abs_lines_cols = np.where(idx_lines_mask[idx_ref])[0]
@@ -163,8 +178,8 @@ for s_obj in solar_like_sobjects:
             flux_b_res = spectra_resample(flux[i_c], wvl[i_c], solar_wvl[idx_ref], k=1)
             flux_std_b_res = spectra_resample(flux_std[i_c], wvl[i_c], solar_wvl[idx_ref], k=1)
 
-            # correct flux values if needed
-            flux_b_res[flux_b_res > 1.2] = 1.2
+            # correct flux values in needed
+            flux_b_res[flux_b_res > 1.15] = 1.15
             flux_b_res[flux_b_res < 0] = 0.
 
             # determine spectrum difference and its variance
@@ -181,10 +196,9 @@ for s_obj in solar_like_sobjects:
             # walker prob plot
             if save_plots:
                 print(" Plotting walker probabilities")
-                walkers_prob = sampler.lnprobability/len(flux_b_res)
+                walkers_prob = sampler.lnprobability
                 for i_w in range(walkers_prob.shape[0]):
                     plt.plot(walkers_prob[i_w, :])
-                plt.ylim((-10, 3))
                 plt.savefig(str(s_obj) + '_gp-lnprob_b' + str(i_c + 1) + '.png', dpi=400)
                 # plt.show()
                 plt.close()
@@ -203,16 +217,6 @@ for s_obj in solar_like_sobjects:
             if save_plots:
                 c_fig = corner.corner(sampler.flatchain, truths=kernel_fit, quantiles=[0.16, 0.5, 0.84],
                                       labels=['amp_noise', 'rad_noise', 'amp_cont', 'rad_cont'], bins=30)
-
-                # # add something to the plots on diagonal of corner plot
-                # # extract the axes
-                # n_dim_plot = len(kernel_fit)
-                # axes = np.array(c_fig.axes).reshape((n_dim_plot,n_dim_plot))
-                # # loop over the axes of plots on diagonal
-                # for i in range(n_dim_plot):
-                #     ax = axes[i, i]
-                #     ax.plot()
-
                 c_fig.savefig(str(s_obj)+'_corner_b'+str(i_c+1)+'.png', dpi=400)
                 plt.close(c_fig)
 
@@ -231,10 +235,10 @@ for s_obj in solar_like_sobjects:
                 plt.savefig(str(s_obj)+'_gp_b'+str(i_c+1)+'.png', dpi=550)
                 plt.close()
 
-            pix_ref.append(solar_flx[idx_ref][abs_lines_cols])
-            pix_ref_noise.append(gp_noise_pred[:, abs_lines_cols])
-            pix_spec.append(flux_b_res[abs_lines_cols])
-            pix_std.append(flux_std_b_res[abs_lines_cols])
+            pix_ref.append(solar_flx[idx_ref])
+            pix_ref_noise.append(gp_noise_pred)
+            pix_spec.append(flux_b_res)
+            pix_std.append(flux_std_b_res)
 
         # save fit res
         if save_gp_params:
@@ -244,30 +248,30 @@ for s_obj in solar_like_sobjects:
             txt.close()
 
     else:
-        for i_c in range(len(process_bands)):
+        for i_c in range(4):
             idx_ref = np.logical_and(solar_wvl >= min_wvl[i_c], solar_wvl <= max_wvl[i_c])
             abs_lines_cols = np.where(idx_lines_mask[idx_ref])[0]
             # print flux[i_c], wvl[i_c], solar_wvl[idx_ref]
             flux_b_res = spectra_resample(flux[i_c], wvl[i_c], solar_wvl[idx_ref], k=1)
             flux_std_b_res = spectra_resample(flux_std[i_c], wvl[i_c], solar_wvl[idx_ref], k=1)
 
-            if n_noise_samples == 1:
-                snr_noise_pred = np.zeros((n_noise_samples, len(flux_b_res)))
-            else:
-                # generate poissonian noise to make a spectrum with snr into a spectrum with target snr
-                snr_ref = np.inf
-                snr_spectrum = galah_object['snr_c' + str(i_c + 1) + '_guess'].data
-                snr_sigma = np.sqrt((1.0 / snr_spectrum) ** 2)  # - (1.0 / snr_ref) ** 2)
-                snr_noise_pred = np.random.poisson((1.0 / snr_sigma)**2, size=(n_noise_samples, len(flux_b_res)))
-                snr_noise_pred = snr_noise_pred / ((1.0 / snr_sigma)**2) - 1.
+            # generate poissonian noise to make a spectrum with snr into a spectrum with target snr
+            snr_ref = np.inf
+            snr_spectrum = galah_object['snr_c'+str(i_c+1)+'_iraf'].data
+
+            snr_sigma = np.sqrt((1.0 / snr_spectrum)**2)  #- (1.0 / snr_ref) ** 2)
+            snr_noise_pred = np.random.poisson((1.0 / snr_sigma)**2, size=(n_noise_samples, len(flux_b_res)))
+            snr_noise_pred = snr_noise_pred / ((1.0 / snr_sigma)**2) - 1.
 
             # generate noise to observed spectrum based on given snr value of the spectrum
-            pix_ref.append(solar_flx[idx_ref][abs_lines_cols])
-            pix_spec.append(flux_b_res[abs_lines_cols])
-            pix_std.append(flux_std_b_res[abs_lines_cols])
-            pix_ref_noise.append(snr_noise_pred[:, abs_lines_cols])
+            pix_wvl.append(solar_wvl[idx_ref])
+            pix_ref.append(solar_flx[idx_ref])
+            pix_spec.append(flux_b_res)
+            pix_std.append(flux_std_b_res)
+            pix_ref_noise.append(snr_noise_pred)
 
     # compute different distance measurements
+    pix_wvl = np.hstack(pix_wvl)
     pix_ref = np.hstack(pix_ref)
     pix_ref_noise = np.hstack(pix_ref_noise)
     pix_spec = np.hstack(pix_spec)
@@ -280,7 +284,7 @@ for s_obj in solar_like_sobjects:
     spectrum_distances = np.zeros((n_noise_samples, len(sim_metrices)))
     for i_snr in range(n_noise_samples):
         # determine weights for the distance computation (different approaches)
-        spectrum_distances[i_snr, :] = compute_distances(pix_spec, pix_std, pix_ref_noise[i_snr, :] + pix_ref, d=noise_power)
+        spectrum_distances[i_snr, :] = compute_ews(pix_spec, pix_wvl, pix_ref_noise[i_snr, :] + pix_ref, sim_metrices, galah_linelist)
         if save_plots:
             plt.plot(pix_ref_noise[i_snr, :] + pix_ref, lw=0.2, alpha=0.01, c='blue')
     # add agregated results to final table
@@ -299,31 +303,4 @@ if os.path.isfile(file_out_fits):
     os.remove(file_out_fits)
 sim_results.write(file_out_fits)
 
-'''
-print sim_results
-print ''
-sobj_id_like = sim_results[np.argsort(sim_results['chi2'])[:75]]['sobject_id']
-print ','.join([str(s) for s in sobj_id_like])
 
-print ''
-sobj_id_dislike = sim_results[np.argsort(sim_results['chi2'])[-75:]]['sobject_id']
-print ','.join([str(s) for s in sobj_id_dislike])
-
-# output a plot of the most solar like spectra
-for i_b in range(1, 5):
-    for s_obj in sobj_id_like:
-        flux, wvl = get_spectra_dr52(str(s_obj), bands=[i_b], root=dr52_dir, extension=read_ext)
-        if read_ext == 0:
-            # apply the same normalization as in the process of creation of master solar spectrum
-            flux[0] = spectra_normalize(wvl[0], flux[0], steps=35, sigma_low=1.5, sigma_high=2.8, order=29,
-                                          n_min_perc=3., return_fit=False, func='poly')
-            # apply computed rv shift to the spectrum
-            rv_shift = galah_param[galah_param['sobject_id'] == s_obj]['rv_guess_shift']
-            wvl *= (1 - rv_shift / 299792.458)
-        plt.plot(wvl[0], flux[0], lw=0.2, c='blue', alpha=0.02)
-    plt.plot(solar_wvl, solar_flx, lw=0.2, c='black')
-    plt.xlim((min_wvl[i_b-1], max_wvl[i_b-1]))
-    plt.ylim((0.4, 1.1))
-    plt.savefig('similar_spectra_b'+str(i_b)+'.png', dpi=1000)
-    plt.close()
-'''

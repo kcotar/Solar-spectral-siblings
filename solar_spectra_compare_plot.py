@@ -18,8 +18,8 @@ def kernel(s):
     g = np.exp(-(x**2/float(s**2)/2.))
     return g / np.sum(g)
 
-data_input_dir = '/home/klemen/GALAH_data/Solar_data/'
-galah_linelist = Table.read('/home/klemen/GALAH_data/GALAH_Cannon_linelist_newer.csv')
+data_input_dir = '/home/klemen/data4_mount/Solar_data_dr53/'
+galah_linelist = Table.read('/home/klemen/data4_mount/GALAH_Cannon_linelist_newer.csv')
 
 solar_ref = pd.read_csv(data_input_dir + 'solar_spectra.txt', header=None, delimiter=' ', na_values='nan').values
 suffix = '_ext0_2'
@@ -36,12 +36,8 @@ solar_flx = np.hstack((solar_g1[:, 1], solar_g2[:, 1], solar_g3[:, 1], solar_g4[
 
 x = solar_ref[:, 0]
 y = solar_ref[:, 1]
-# idx_use_ref = x > 4700
-# x = x[idx_use_ref]
-# y = y[idx_use_ref]
-# y_conv1 = y_conv1[idx_use_ref]
 
-min_wvl = list([4730, 5660, 6490, 7705])
+min_wvl = list([4730, 5660, 6490, 7700])
 max_wvl = list([4890, 5860, 6725, 7870])
 
 # resolution degradation computation
@@ -50,6 +46,7 @@ R_galah = 28000.
 wvl_start = x[0]
 wvl_end = x[-1]
 
+# theoretical values for kernel convolution
 s_ref_start = wvl_start/R_solar_ref
 s_ref_end = wvl_end/R_solar_ref
 s_galah_start = wvl_start/R_galah
@@ -58,49 +55,25 @@ s_conv_start = np.sqrt(s_galah_start**2 - s_ref_start**2)
 s_conv_end = np.sqrt(s_galah_end**2 - s_ref_end**2)
 print s_conv_start, s_conv_end
 
-# convolve solar spectrum
-# kernel_widths = np.linspace(s_conv_start, s_conv_end, len(y))
-# y_conv1 = varcon.varconvolve(x, y, kernel, kernel_widths/2.)
+# convolve solar spectrum - different, modified and visually modified values
+kernel_widths = np.linspace(0.07, 0.17, len(y))
+y_conv1 = varcon.varconvolve(x, y, kernel, kernel_widths)
 # export convolved spectra
-# txt = open('solar_spectra_conv.txt', 'w')
-# for i_l in range(len(x)):
-#     txt.write(str(x[i_l])+' '+str(y_conv1[i_l])+'\n')
-# txt.close()
+txt = open('solar_spectra_conv.txt', 'w')
+for i_l in range(len(x)):
+    txt.write(str(x[i_l])+' '+str(y_conv1[i_l])+'\n')
+txt.close()
 
-# idx_g1 = np.isfinite(solar_g1[:, 1])
-# g1_y = solar_g1[:, 1][idx_g1]
-# g1_x = solar_g1[:, 0][idx_g1]
-# g1_y[g1_y > 0.95] = 0.
-# y[y > 0.95] = 0.
-#
-# idx_b1 = np.logical_and(x>=np.min(g1_x), x<=np.max(g1_x))
-# corr_res = np.correlate(y[idx_b1], g1_y, mode='same')
-# plt.plot(corr_res)
+# # plot everything
+# plt.plot(x, y_conv1, c='black', lw=1.5)
+# plt.plot(solar_wvl, solar_flx, c='blue', lw=1.5)
+# # kernel_widths = np.linspace(0.07, 0.17, len(y))
+# # y_conv1 = varcon.varconvolve(x, y, kernel, kernel_widths)
+# # plt.plot(x, y_conv1, c='green', lw=1.5)
 # plt.show()
 # plt.close()
-# print len(g1_y), len(y[idx_b1])
-# print np.argmax(corr_res), np.argmax(corr_res) - len(corr_res)/2.
 
-
-# plot everything
-
-# y_fit, idx_fit = spectra_normalize(x, y_conv1, steps=9, sigma_low=1.5, sigma_high=3., order=7, func='spline', return_fit=True, return_idx=True)
-
-# idx_fit_for_solar = np.ndarray(len(solar_wvl), dtype=np.bool)
-# idx_fit_for_solar.fill(False)
-# for wvl_fit_use in x[idx_fit]:
-#     idx_fit_for_solar[np.abs(solar_wvl - wvl_fit_use)<1e-5] = True
-# print np.sum(idx_fit_for_solar)
-
-# plt.plot(x, y_conv2, c='green', lw=2)
-# plt.plot(x, y_conv3, c='orange', lw=2)
-# plt.plot(x, y_conv4, c='yellow', lw=2)
-
-# plt.plot(x, y_conv1, c='red', lw=2)
-# plt.plot(solar_g1[:, 0], solar_g1[:, 1], c='blue', lw=1)
-# plt.plot(solar_g2[:, 0], solar_g2[:, 1], c='blue', lw=1)
-# plt.plot(solar_g3[:, 0], solar_g3[:, 1], c='blue', lw=1)
-# plt.plot(solar_g4[:, 0], solar_g4[:, 1], c='blue', lw=1)
+raise SystemExit
 
 sl = 2.
 sh = 3.
@@ -108,8 +81,9 @@ st = 17
 ord = 5
 flux_offset = [0.04, 0.03, 0.03, 0.03]
 flux_offset_amp = [0.06, 0.04, 0.1, 0.01]
+# flux_offset_amp = [0.00, 0.00, 0.0, 0.00]
 for i_b in range(4):
-    d_wvl = 20
+    d_wvl = 0
     idx_ref_sub = np.logical_and(x > min_wvl[i_b]-d_wvl, x < max_wvl[i_b]+d_wvl)
     y_conv1_norm = spectra_normalize(x[idx_ref_sub], y_conv1[idx_ref_sub], steps=st, sigma_low=sl, sigma_high=sh, order=ord, func='poly')
     idx_sol_sub = np.logical_and(solar_wvl > min_wvl[i_b]-d_wvl, solar_wvl < max_wvl[i_b]+d_wvl)
@@ -118,20 +92,29 @@ for i_b in range(4):
     y_off_perwvl = (1. - 1. * np.arange(np.sum(idx_sol_sub)) / np.sum(idx_sol_sub)) * flux_offset_amp[i_b] + flux_offset[i_b]
     solar_flux_norm_offset = spectra_normalize(solar_wvl[idx_sol_sub], solar_flx[idx_sol_sub] - y_off_perwvl, steps=st, sigma_low=sl, sigma_high=sh, order=ord, func='poly')
 
-    plt.plot(x[idx_ref_sub], y_conv1_norm, c='black', lw=2)
-    plt.plot(solar_wvl[idx_sol_sub], solar_flux_norm_offset, c='blue', lw=2)
+    plt.figure(1, figsize=(12, 7))
+    # [left, bottom, width, height]
+    axSpectra = plt.axes([0.05, 0.3, 0.92, 0.65])
+    axDiff = plt.axes([0.05, 0.05, 0.92, 0.20])
 
-    # export results
-    txt_out = 'b'+str(i_b+1)+'_solar_galah' + suffix + '_offset.txt'
-    txt = open(txt_out, 'w')
-    for i_l in range(len(solar_flux_norm_offset)):
-        txt.write(str(solar_wvl[idx_sol_sub][i_l])+' '+str(solar_flux_norm_offset[i_l])+'\n')
-    txt.close()
+    axSpectra.plot(x[idx_ref_sub], y_conv1_norm, c='black', lw=2)
+    axSpectra.plot(solar_wvl[idx_sol_sub], solar_flux_norm_offset, c='blue', lw=2)
 
-    d_wvl = 0.1
+    # # export results
+    # txt_out = 'b'+str(i_b+1)+'_solar_galah' + suffix + '_offset.txt'
+    # txt = open(txt_out, 'w')
+    # for i_l in range(len(solar_flux_norm_offset)):
+    #     txt.write(str(solar_wvl[idx_sol_sub][i_l])+' '+str(solar_flux_norm_offset[i_l])+'\n')
+    # txt.close()
+
+    d_abs_wvl = 0.0
     for line in galah_linelist:
         if line['line_centre'] <solar_wvl[idx_sol_sub][-1] and line['line_centre'] > solar_wvl[idx_sol_sub][0]:
-            plt.axvspan(line['line_start'] - d_wvl, line['line_end'] + d_wvl, lw=0, color='black', alpha=0.2)
+            axSpectra.axvspan(line['line_start'] - d_abs_wvl, line['line_end'] + d_abs_wvl, lw=0, color='black', alpha=0.2)
+            axDiff.axvspan(line['line_start'] - d_abs_wvl, line['line_end'] + d_abs_wvl, lw=0, color='black', alpha=0.2)
+
+    axDiff.axhline(y=0, c='black', lw=1)
+    axDiff.plot(solar_wvl[idx_sol_sub], y_conv1_norm - solar_flux_norm_offset, c='blue', lw=1.5)
 
     # print '-----', i_b, '-----'
     # idx_sum = y_conv1_norm < 0.95
@@ -140,8 +123,11 @@ for i_b in range(4):
     #     y_off_perwvl = (1. - 1. * np.arange(np.sum(idx_sol_sub)) / np.sum(idx_sol_sub)) * dy_amp + dy_offset
     #     solar_flux_norm_offset = spectra_normalize(solar_wvl[idx_sol_sub], solar_flx[idx_sol_sub]-y_off_perwvl, steps=st, sigma_low=sl, sigma_high=sh, order=ord, func='poly')
     #     print dy_amp, np.nansum(np.abs(y_conv1_norm - solar_flux_norm_offset)[idx_sum])
-    #     plt.plot(solar_wvl[idx_sol_sub], solar_flux_norm_offset, c='blue', lw=2)
-    plt.ylim(0.3, 1.1)
+    #     axSpectra.plot(solar_wvl[idx_sol_sub], solar_flux_norm_offset, c='red', lw=1.)
+    #     axDiff.plot(solar_wvl[idx_sol_sub], y_conv1_norm - solar_flux_norm_offset, c='red', lw=1.)
+
+    axSpectra.set(ylim=(0.3, 1.1), xlim=(min_wvl[i_b]-d_wvl, max_wvl[i_b]+d_wvl))
+    axDiff.set(ylim=(-0.05, 0.05), xlim=(min_wvl[i_b]-d_wvl, max_wvl[i_b]+d_wvl))
     plt.show()
     plt.close()
 #

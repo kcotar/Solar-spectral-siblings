@@ -1,28 +1,104 @@
 from os import chdir
 from solar_siblings_functions import *
 
-chdir('Distances_SNRadded_weighted-p0_test-SNR-norm-ndata-b2-snrnone')
-sim_res = Table.read('solar_similarity_narrow.fits')
-snr_metrices_functions1 = Table.read('metrices_snr_function_flux0.00.csv')
-snr_metrices_functions2 = Table.read('metrices_snr_function_flux0.02.csv')
-snr_metrices_functions3 = Table.read('metrices_snr_function_flux0.04.csv')
-snr_metrices_functions4 = Table.read('metrices_snr_function_flux0.06.csv')
-snr_metrices_functions5 = Table.read('metrices_snr_function_flux0.08.csv')
-snr_metrices_functions6 = Table.read('metrices_snr_function_flux0.10.csv')
 
-galah_data_input = '/home/klemen/data4_mount/'
-galah_params = Table.read(galah_data_input+'sobject_iraf_52_reduced_20171111.fits')
-galah_linelist = Table.read(galah_data_input + 'GALAH_Cannon_linelist_newer.csv')
+def get_snr_metric_functions(data_dir, band, flux):
+    csv_file = 'metrices_snr_function_b{:.0f}_flux{:.2f}.csv'.format(band, flux)
+    csv_path = data_dir + csv_file
+    if os.path.isfile(csv_path):
+        return Table.read(csv_path)
+    else:
+        return Table()
 
+
+def metrices_to_investigate(all_cols):
+    metrices = all_cols[1:]  # remove first sobject_id col
+    remove_metrices = np.array(['C', 'Ce', 'Co', 'Eu', 'K', 'La', 'Li', 'Mo', 'Nd', 'Ru', 'Sm', 'Sr', 'Zr', 'EW', 'correlation'])
+    metrices = [s for s in metrices if np.sum(remove_metrices == s) <= 0]
+    metrices = [s for s in metrices if '_std' not in s]
+    return metrices
+
+
+def fill_results_dictionary(res_dict, key, values):
+    if key not in res_dict:
+        res_dict[key] = list([])
+    res_dict[key].append(values)
+    return res_dict
+
+
+# read reference solar data
 suffix = '_ext0_2_offset'
 solar_input_dir = galah_data_input+'Solar_data/'
 solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix)
 
-remove_metrices = np.array(['C', 'Ce', 'Co', 'Eu', 'K', 'La', 'Li', 'Mo', 'Nd', 'Ru', 'Sm', 'Sr', 'Zr', 'EW', 'correlation'])
-sim_metrics = sim_res.colnames[1:]
-sim_metrics = [s for s in sim_metrics if '_std' not in s]
-scores = np.arange(len(sim_res))+1
+# read Galah guess and/or cannon parameters
+galah_params = Table.read(galah_data_input+'sobject_iraf_52_reduced_20171111.fits')
 
+# define directory with simulations of metrics SNR functions
+snr_functions_dir = os.getcwd() + '/' + 'Distances_SNR-functions_multioffset_allbands_subsample' + '/'
+
+# distance/similarity measurements
+chdir('Distances_Step1_p0_SNRsamples0')
+evaluate_bands = list([1, 2, 4])
+plot_flux_offsets = [0., 0.04, 0.08, 0.12, 0.16, 0.2]
+
+final_selected_objects = {}
+
+for i_b in evaluate_bands:
+    print 'Band', i_b
+    sim_res = Table.read('solar_similarity_b{:.0f}.fits'.format(i_b))
+    params_joined = join(sim_res, galah_params, keys='sobject_id')
+
+    for metric in metrices_to_investigate(sim_res.colnames):
+        print ' Metric:', metric
+        metric_values = params_joined[metric]
+        snr_col = 'snr_c' + str(i_b) + '_guess'
+        snr_values = params_joined[snr_col]
+        snr_range = np.linspace(np.min(snr_values), np.max(snr_values), 200)
+        plt.errorbar(snr_values, metric_values, yerr=params_joined[metric + '_std'], fmt='o', ms=1, elinewidth=0.3,
+                     alpha=0.3)
+        plt.ylim(0, np.nanpercentile(metric_values, 92))
+        plt.title(metric + ' band:' + str(i_b))
+        plt.xlim(0, np.nanpercentile(snr_values, 99.8))
+        plt.xlabel(snr_col)
+        plt.ylabel(metric)
+        # add SNR function for observed metric
+        for f_o in plot_flux_offsets:
+            snr_metrices_functions = get_snr_metric_functions(snr_functions_dir, i_b, f_o)
+            plt.plot(snr_range, metric_by_snr(snr_metrices_functions, metric, snr_range), lw=1, c='red', label='{:.2f}'.format(f_o))
+        # plt.show()
+        plt.savefig(metric + '_b' + str(i_b) + '.png', dpi=450)
+        plt.close()
+
+        # choose objects to be considered in the next step
+        max_metric_value = metric_by_snr(get_snr_metric_functions(snr_functions_dir, i_b, 0.1),
+                                         metric, params_joined[snr_col])
+        idx_selected_sobjects = params_joined[metric] < max_metric_value
+        final_selected_objects = fill_results_dictionary(final_selected_objects, metric,
+                                                         np.int64(list(params_joined['sobject_id'][idx_selected_sobjects].data)))
+
+txt_out_selection = 'final_selection.txt'
+txt = open(txt_out_selection, 'w')
+seleted_per_metric = list([])
+for metric_key in final_selected_objects.keys():
+    print 'Selecting objects for metric:', metric_key
+    # print final_selected_objects[metric_key]
+    selected = np.hstack(final_selected_objects[metric_key])
+    uniq_id, repeats_id = np.unique(selected, return_counts=True)
+    selected_uniq = uniq_id[repeats_id >= len(evaluate_bands)]
+    seleted_per_metric.append(selected_uniq)
+    print selected_uniq
+    txt.write(metric_key + ':\n')
+    txt.write(','.join([str(su) for su in selected_uniq]))
+    txt.write('\n\n')
+# objects selected by all metrices
+uniq_id, repeats_id = np.unique(np.hstack(seleted_per_metric), return_counts=True)
+selected_uniq = uniq_id[repeats_id >= len(evaluate_bands)]
+txt.write('All:\n')
+txt.write(','.join([str(su) for su in selected_uniq]))
+txt.close()
+
+'''
 params_joined = join(galah_params, sim_res, keys='sobject_id')
 for i_b in [2]:
     for metric in sim_metrics:
@@ -110,4 +186,4 @@ print ','.join([str(a) for a in s_worst])
 # plt.close()
 
 print sim_res[list(np.hstack(('sobject_id',sim_metrics,'final_score')))]
-
+'''

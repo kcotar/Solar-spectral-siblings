@@ -34,6 +34,12 @@ from scipy.spatial.distance import *
 # sokalsneath(u, v[, w]) 	Computes the Sokal-Sneath dissimilarity between two boolean 1-D arrays.
 # yule(u, v[, w]) 	Computes the Yule dissimilarity between two boolean 1-D arrays.
 
+min_wvl = np.array([4725, 5665, 6485, 7700])
+max_wvl = np.array([4895, 5865, 6725, 7875])
+
+# every_nth_solar_pixel = np.array([4, 5, 6, 7])  # double sub-sampling of spectra
+every_nth_solar_pixel = np.array([8, 10, 12, 14])  # almost original sampling of the data - GP works much faster with this
+
 # PC hostname
 pc_name = gethostname()
 
@@ -51,8 +57,10 @@ else:
 from helper_functions import *
 from spectra_collection_functions import *
 
+galah_linelist = Table.read(galah_data_input + 'GALAH_Cannon_linelist_newer.csv')
 
-def get_solar_data(solar_input_dir, suffix):
+
+def get_solar_data(solar_input_dir, suffix, every_nth=1):
     solar_g1 = pd.read_csv(solar_input_dir + 'b1_solar_galah' + suffix + '.txt', header=None, delimiter=' ', na_values='nan').values
     solar_g2 = pd.read_csv(solar_input_dir + 'b2_solar_galah' + suffix + '.txt', header=None, delimiter=' ', na_values='nan').values
     solar_g3 = pd.read_csv(solar_input_dir + 'b3_solar_galah' + suffix + '.txt', header=None, delimiter=' ', na_values='nan').values
@@ -60,18 +68,32 @@ def get_solar_data(solar_input_dir, suffix):
     solar_wvl = np.hstack((solar_g1[:, 0], solar_g2[:, 0], solar_g3[:, 0], solar_g4[:, 0]))
     solar_flx = np.hstack((solar_g1[:, 1], solar_g2[:, 1], solar_g3[:, 1], solar_g4[:, 1]))
     idx_finite = np.isfinite(solar_flx)
-    return solar_wvl[idx_finite], solar_flx[idx_finite]
+    if every_nth <= 1:
+        return solar_wvl[idx_finite], solar_flx[idx_finite]
+    else:
+        return solar_wvl[idx_finite][::every_nth], solar_flx[idx_finite][::every_nth]
+
+
+def get_linelist_mask(wvl_values, d_wvl=0):
+    idx_lines_mask = wvl_values < 0.
+    for line in galah_linelist:
+        idx_lines_mask[np.logical_and(wvl_values >= line['line_start'] - d_wvl, wvl_values <= line['line_end'] + d_wvl)] = True
+    return idx_lines_mask
+
+
+def get_band_mask(wvl_values, evaluate_band):
+    return np.logical_and(wvl_values >= min_wvl[evaluate_band - 1], wvl_values <= max_wvl[evaluate_band - 1])
 
 
 def kernel_params_ok(p):
     amp, rad, amp2, rad2 = p
-    if not 1e-8 < amp < 1e-3:
+    if not 1e-9 < amp < 1e-2:
         return False
-    if not 1e-8 < rad < 0.02:
+    if not 1e-8 < rad < 0.05:
         return False
-    if not 1e-8 < amp2 < 1e-4:
+    if not 1e-9 < amp2 < 1e-3:
         return False
-    if not 1 < rad2 < 35:
+    if not 0.1 < rad2 < 40:
         return False
     return True
 
@@ -114,7 +136,7 @@ def fit_gp_kernel(init_guess, data, wvl, nwalkers=32, n_threds=1, n_burn=75, dat
     # add random amount of noise to the data
     # p0 = [given_guess + 1e-4 * np.random.randn(ndim) for i_w in range(nwalkers)]
     # multiply by the random amount of noise and add to the data - better for parameters of unequal values
-    perc_rand = 20.
+    perc_rand = 25.
     p0 = [given_guess + given_guess * np.random.randn(ndim) * perc_rand/100. for i_w in range(nwalkers)]  #
 
     # initialize emcee sampler

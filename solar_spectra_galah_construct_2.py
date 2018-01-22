@@ -26,12 +26,16 @@ from helper_functions import *
 from spectra_collection_functions import *
 
 # some settings
-min_wvl = list([4710, 5640, 6475, 7680])
+min_wvl = list([4705, 5640, 6475, 7680])
 max_wvl = list([4915, 5885, 6750, 7900])
-rv_weights = list([0.8, 1., 1., 0.8])
+rv_weights = list([0.75, 1., 1., 0.75])
 
-spline_mask = [[4845, 4875],
-               [6542, 6582]]
+# define regions without continuum or heavily influenced by residual telluric lines
+norm_bad_ranges = [[4727.0, 4737.0],
+                   [4845.0, 4875.0],
+                   [5787.5, 5795.0],
+                   [6492.5, 6498.0],
+                   [6542.0, 6582.0]]
 
 
 # ---------------------
@@ -97,6 +101,31 @@ def get_wvl_log_shift(obs_flux, obs_wvl, ref_flux, ref_wvl, reduce_bands):
     return shift_res
 
 
+def do_wvl_shift_log_and_resample(obs_flux, obs_wvl, log_shift, ref_wvl, reduce_bands):
+    for i_r in range(len(reduce_bands)):
+        ccd = reduce_bands[i_r] - 1
+        idx_ref_sub = np.logical_and(ref_wvl >= min_wvl[ccd], ref_wvl <= max_wvl[ccd])
+        ref_wvl_sub = ref_wvl[idx_ref_sub]
+
+        obs_flux_log, obs_wvl_log = spectra_logspace(obs_flux[i_r], obs_wvl[i_r])
+        obs_wvl_log -= log_shift
+        obs_flux_res = spectra_resample(obs_flux_log, obs_wvl_log, ref_wvl_sub, k=1)
+        # save results
+        obs_flux[i_r] = obs_flux_res
+        obs_wvl[i_r] = ref_wvl_sub
+    # return results back
+    return obs_flux, obs_wvl
+
+
+def determine_norm_mask(wvl, norm_bad_ranges):
+    mask = np.isfinite(wvl)
+    for w_min, w_max in norm_bad_ranges:
+        idx_maskout = np.logical_and(wvl >= w_min, wvl <= w_max)
+        if np.sum(idx_maskout) > 0:
+            mask[idx_maskout] = False
+    return mask
+
+
 # reference solar spectra
 print 'Read reference Solar spectra'
 solar_ref = pd.read_csv(galah_data_input + 'Solar_data_dr53/solar_spectra_conv.txt', header=None, delimiter=' ', na_values='nan').values
@@ -104,12 +133,12 @@ solar_ref_flux_all = solar_ref[:, 1]
 solar_ref_wvl_all = solar_ref[:, 0]
 
 # data-table settings
-data_date = '20180115'
+data_date = '20180122'
 galah_param_file = 'sobject_iraf_53_reduced_'+data_date+'.fits'
 
 # select ok objects
 galah_param = Table.read(galah_data_input + galah_param_file)
-idx_rows = np.logical_and(galah_param['red_flag'] == 64, galah_param['snr_c2_guess'] > 220)
+idx_rows = np.logical_and(galah_param['red_flag'] == 64, galah_param['snr_c2_guess'] > 240)
 idx_rows = np.logical_and(idx_rows, galah_param['flag_guess'] == 0)
 idx_rows = np.logical_and(idx_rows, galah_param['sobject_id'] > 140301000000000)
 galah_param = galah_param[idx_rows]
@@ -118,27 +147,86 @@ print 'Number of solar spectra:', len(to_read_row)
 
 # galah_param = galah_param[list(np.int64(np.random.rand(500)*len(galah_param)))]
 
+read_ext = 0
 reduce_bands = list([1,2,3,4])
+
+galah_twilight_spectra_list = list()
+
 for i_s_obj in range(len(galah_param)):
     s_obj = galah_param[i_s_obj]['sobject_id']
     print s_obj
     # read all spectral bands
-    flux, wvl = get_spectra_dr52(str(s_obj), bands=reduce_bands, root=dr53_dir, extension=0, individual=False)
-    # renormalize them if needed
-    for i_b in range(len(flux)):
-        flux[i_b] = spectra_normalize(wvl[i_b]-np.mean(wvl[i_b]), flux[i_b],
-                                      steps=25, sigma_low=1.8, sigma_high=3., order=9, n_min_perc=5.,
-                                      return_fit=False, func='poly')
-        
-    wvl_log_shift = get_wvl_log_shift(flux, wvl,
-                                      solar_ref_flux_all, solar_ref_wvl_all, reduce_bands)
+    flux, wvl = get_spectra_dr52(str(s_obj), bands=reduce_bands, root=dr53_dir, extension=read_ext, individual=False)
 
+    if read_ext == 0:
+        # renormalize them if needed
+        for i_b in range(len(flux)):
+            norm_ok_mask = determine_norm_mask(wvl[i_b], norm_bad_ranges)
+            flux[i_b] = spectra_normalize(wvl[i_b]-np.mean(wvl[i_b]), flux[i_b], fit_mask=norm_ok_mask,
+                                          steps=25, sigma_low=2., sigma_high=3., order=10, n_min_perc=5.,
+                                          return_fit=False, func='poly')
+        # determine radial velocity of the object and shift spectra accordingly
+        wvl_log_shift = get_wvl_log_shift(flux, wvl, solar_ref_flux_all, solar_ref_wvl_all, reduce_bands)
+        # apply shift
+        flux, wvl = do_wvl_shift_log_and_resample(flux, wvl, wvl_log_shift, solar_ref_wvl_all, reduce_bands)
+    else:
+        # only resampling is needed
+        for i_r in range(len(reduce_bands)):
+            ccd = reduce_bands[i_r] - 1
+            idx_ref_sub = np.logical_and(solar_ref_wvl_all >= min_wvl[ccd], solar_ref_wvl_all <= max_wvl[ccd])
+            ref_wvl_sub = solar_ref_wvl_all[idx_ref_sub]
+
+            obs_flux_res = spectra_resample(flux[i_r], wvl[i_r], ref_wvl_sub, k=1)
+            # save results
+            flux[i_r] = obs_flux_res
+            wvl[i_r] = ref_wvl_sub
+    # store resampled and corrected data to the array or list
+    galah_twilight_spectra_list.append(np.hstack(flux))
+
+    # plt.plot(np.hstack(wvl), np.hstack(flux))
+    # plt.show()
+    # plt.close()
+
+# define final wavelengths of the twilight spectrum
+galah_twilight_spectra_list = np.vstack(galah_twilight_spectra_list)
+galah_twilight_spectra_wvl = np.hstack(wvl)
+
+print 'Stacking'
+# filter out outlying spectra (based on supplied reference solar spectra)
+solar_ref_flux_galah_sub = solar_ref_flux_all[np.in1d(solar_ref_wvl_all, galah_twilight_spectra_wvl)]
+eucl_match = np.sqrt(np.nansum((galah_twilight_spectra_list - solar_ref_flux_galah_sub) ** 2, axis=1) / np.sum(np.isfinite(galah_twilight_spectra_list), axis=1))
+eucl_match_thr = np.nanpercentile(eucl_match, 95.)
+idx_bad_match = eucl_match >= eucl_match_thr
+galah_twilight_spectra_list[np.where(idx_bad_match)[0], :] = np.nan
+print 'Removed rows:', np.sum(idx_bad_match)
+
+# filter out any outlying data points aka spikes in the dataset (based on per pixel statistics)
+std_outliers = 2.
+galah_solar_median = np.nanmedian(galah_twilight_spectra_list, axis=0)
+galah_solar_std = np.nanstd(galah_twilight_spectra_list, axis=0)
+idx_outliers = np.abs(galah_twilight_spectra_list - galah_solar_median) > std_outliers * galah_solar_std
+galah_twilight_spectra_list[idx_outliers] = np.nan
+print 'Removed outliers:', np.sum(idx_outliers)
+
+# remove zero (or very small) values in the final array - might be the result of final resampling after rv shift
+galah_twilight_spectra_list[galah_twilight_spectra_list < 0.005] = np.nan
+
+# creation of final solar spectrum per Galah band
+galah_solar_median = np.nanmedian(galah_twilight_spectra_list, axis=0)
+
+plt.plot(solar_ref_wvl_all, solar_ref_flux_all)
+plt.plot(galah_twilight_spectra_wvl, galah_solar_median)
+plt.show()
+plt.close()
+
+out_file = galah_data_input + 'Solar_data_dr53/'
+out_file += 'twilight_spectrum_galah_ext'+str(read_ext)+'_order10.txt'
+txt = open(out_file, 'w')
+for i_l in range(len(galah_twilight_spectra_wvl)):
+    txt.write(str(galah_twilight_spectra_wvl[i_l]) + ' ' + str(galah_solar_median[i_l]) + '\n')
+txt.close()
 
 raise SystemExit
-
-
-
-
 
 
 # do the whole procedure for every spectra and every ccd

@@ -264,17 +264,19 @@ def plot_spectra(s_ids, spectra_dir_2, g_data, solar_flx, solar_wvl,
     plt.close()
 
 
-def plot_spectra_with_difference(flux1, flux2, wvl, x_range=None, linelist=None):
+def plot_spectra_with_difference(flux1, flux2, wvl, flux3=None, x_range=None, linelist=None):
     plt.figure(1, figsize=(12, 7))
     # [left, bottom, width, height]
     axSpectra = plt.axes([0.05, 0.3, 0.92, 0.65])
     axDiff = plt.axes([0.05, 0.05, 0.92, 0.20])
     axSpectra.plot(wvl, flux1, c='black', lw=1.)
     axSpectra.plot(wvl, flux2, c='blue', lw=1.)
+    if flux3 is not None:
+        axSpectra.plot(wvl, flux3, c='red', lw=1.)
     axDiff.axhline(y=0, c='black', lw=1)
     axDiff.plot(wvl, flux1-flux2, c='blue', lw=1.)
     axSpectra.set(ylim=(0.3, 1.1), xlim=x_range)
-    axDiff.set(ylim=(-0.05, 0.05), xlim=x_range)
+    axDiff.set(ylim=(-0.04, 0.04), xlim=x_range)
     if linelist is not None:
         d_abs_wvl = 0.0
         for line in linelist:

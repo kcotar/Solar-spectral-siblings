@@ -38,6 +38,15 @@ solar_ref_conv = pd.read_csv(solar_data_dir + 'solar_spectra_conv.txt', header=N
 # Galah spectrum
 solar_galah = pd.read_csv(solar_data_dir + 'twilight_spectrum_galah_ext0_order10.txt', header=None, delimiter=' ', na_values='nan').values
 
+# # convolve solar spectrum - different, modified and visually modified values
+# kernel_widths = np.linspace(0.07, 0.155, solar_ref.shape[0])
+# solar_ref[:, 1] = varcon.varconvolve(solar_ref[:, 0], solar_ref[:, 1], kernel, kernel_widths)
+# # export convolved spectra
+# txt = open(solar_data_dir + 'solar_spectra_conv.txt', 'w')
+# for i_l in range(solar_ref.shape[0]):
+#     txt.write(str(solar_ref[i_l, 0])+' '+str(solar_ref[i_l, 1])+'\n')
+# txt.close()
+
 min_wvl = list([4705, 5640, 6475, 7680])
 max_wvl = list([4915, 5885, 6750, 7900])
 

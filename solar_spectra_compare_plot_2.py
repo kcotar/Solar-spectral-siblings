@@ -36,7 +36,7 @@ solar_ref = pd.read_csv(solar_data_dir + 'solar_spectra.txt', header=None, delim
 solar_ref_conv = pd.read_csv(solar_data_dir + 'solar_spectra_conv.txt', header=None, delimiter=' ', na_values='nan').values
 
 # Galah spectrum
-solar_galah = pd.read_csv(solar_data_dir + 'twilight_spectrum_galah_ext0_order10.txt', header=None, delimiter=' ', na_values='nan').values
+solar_galah = pd.read_csv(solar_data_dir + 'twilight_spectrum_galah_ext0.txt', header=None, delimiter=' ', na_values='nan').values
 
 # # convolve solar spectrum - different, modified and visually modified values
 # kernel_widths = np.linspace(0.07, 0.155, solar_ref.shape[0])

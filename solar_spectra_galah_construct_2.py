@@ -14,7 +14,7 @@ import pandas as pd
 pc_name = gethostname()
 
 # Galah dir
-dr_ver = 'dr5.2'
+dr_ver = 'dr5.3'
 dr_num = dr_ver[2]+dr_ver[4]
 
 # input data
@@ -32,7 +32,8 @@ from spectra_collection_functions import *
 # some settings
 min_wvl = list([4705, 5640, 6475, 7680])
 max_wvl = list([4915, 5885, 6750, 7900])
-rv_weights = list([0.75, 1., 1., 0.75])
+rv_weights = list([0.75, 1., 1., 0.25])
+merge_all_dates = True
 
 # define regions without continuum or heavily influenced by residual telluric lines
 # prepared specifically for Sun/flats and solar like spectra
@@ -142,12 +143,12 @@ solar_ref_flux_all = solar_ref[:, 1]
 solar_ref_wvl_all = solar_ref[:, 0]
 
 # data-table settings
-data_date = '20171111'
+data_date = '20180212'
 galah_param_file = 'sobject_iraf_'+dr_num+'_reduced_'+data_date+'.fits'
 
 # select ok objects
 galah_param = Table.read(galah_data_input + galah_param_file)
-idx_rows = np.logical_and(galah_param['red_flag'] == 64, galah_param['snr_c2_guess'] > 0)
+idx_rows = np.logical_and(galah_param['red_flag'] == 64, galah_param['snr_c2_iraf'] > 150)
 idx_rows = np.logical_and(idx_rows, galah_param['flag_guess'] == 0)
 idx_rows = np.logical_and(idx_rows, galah_param['sobject_id'] > 140301000000000)
 galah_param = galah_param[idx_rows]
@@ -159,15 +160,22 @@ print 'Number of solar spectra:', len(to_read_row)
 read_ext = 0
 reduce_bands = list([1, 2, 3, 4])
 
-print len(np.unique(galah_param['date']))
+if merge_all_dates:
+    possible_dates = ['all']
+else:
+    print 'Unique dates:', len(np.unique(galah_param['date']))
+    possible_dates = np.unique(galah_param['date'])
 
-for date_sel in np.unique(galah_param['date']):
-    print 'For date (' + str(date_sel) + '): ' + str(len(galah_param['date'] == date_sel))
+for date_sel in possible_dates:
+    if merge_all_dates:
+        flats_sobjects = galah_param['sobject_id']
+    else:
+        print 'For date (' + str(date_sel) + '): ' + str(len(galah_param['date'] == date_sel))
+        galah_param_sub = galah_param[galah_param['date'] == date_sel]
+        # select n with best snr per observation date if there is many spectra with good snr
+        flats_sobjects = galah_param_sub[np.argsort(galah_param_sub['snr_c2_guess'])[::-1]]['sobject_id'][:75]
+
     galah_twilight_spectra_list = list()
-
-    galah_param_sub = galah_param[galah_param['date'] == date_sel]
-    flats_sobjects = galah_param_sub[np.argsort(galah_param_sub['snr_c2_guess'])[::-1]]['sobject_id'][:75]
-
     for s_obj in flats_sobjects:
         print s_obj
         # read all spectral bands
@@ -178,20 +186,18 @@ for date_sel in np.unique(galah_param['date']):
             for i_b in range(len(flux)):
                 norm_ok_mask = determine_norm_mask(wvl[i_b], norm_bad_ranges)
                 flux[i_b] = spectra_normalize(wvl[i_b]-np.mean(wvl[i_b]), flux[i_b], fit_mask=norm_ok_mask,
-                                              steps=25, sigma_low=2., sigma_high=3., order=12, n_min_perc=5.,
+                                              steps=15, sigma_low=2., sigma_high=3., order=11, n_min_perc=5.,
                                               return_fit=False, func='cheb')
+
+                # fit_res = spectra_normalize(wvl[i_b] - np.mean(wvl[i_b]), flux[i_b], fit_mask=norm_ok_mask,
+                #                               steps=15, sigma_low=2., sigma_high=3., order=11, n_min_perc=5.,
+                #                               return_fit=True, func='cheb')
                 # plt.plot(wvl[i_b], fit_res, c='red', lw=2)
                 # plt.plot(wvl[i_b], flux[i_b], c='black', lw=1)
                 # plt.show()
                 # plt.close()
+                # continue
 
-                # ccd = reduce_bands[i_b] - 1
-                # idx_ref_sub = np.logical_and(solar_ref_wvl_all >= min_wvl[ccd], solar_ref_wvl_all <= max_wvl[ccd])
-                # ref_wvl_sub = solar_ref_wvl_all[idx_ref_sub]
-                # obs_flux_res = spectra_resample(flux[i_b], wvl[i_b], ref_wvl_sub, k=1)
-                # # save results
-                # flux[i_b] = obs_flux_res
-                # wvl[i_b] = ref_wvl_sub
 
             # determine radial velocity of the object and shift spectra accordingly
             wvl_log_shift = get_wvl_log_shift(flux, wvl, solar_ref_flux_all, solar_ref_wvl_all, reduce_bands)

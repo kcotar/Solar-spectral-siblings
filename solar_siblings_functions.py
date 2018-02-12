@@ -37,8 +37,8 @@ from scipy.spatial.distance import *
 min_wvl = np.array([4725, 5665, 6485, 7700])
 max_wvl = np.array([4895, 5865, 6725, 7875])
 
-# every_nth_solar_pixel = np.array([4, 5, 6, 7])  # double sub-sampling of spectra
-every_nth_solar_pixel = np.array([8, 10, 12, 14])  # almost original sampling of the data - GP works much faster with this
+every_nth_solar_pixel = np.array([4, 5, 6, 7])  # double sub-sampling of spectra
+# every_nth_solar_pixel = np.array([8, 10, 12, 14])  # almost original sampling of the data - GP works much faster with this
 
 # PC hostname
 pc_name = gethostname()
@@ -58,7 +58,26 @@ from helper_functions import *
 from spectra_collection_functions import *
 
 galah_linelist = Table.read(galah_data_input + 'GALAH_Cannon_linelist_newer.csv')
-
+# define lines with clearly visible telluric contamination between different night
+problematic_lines = ['Ti5689.46',
+                     'Si5690.425',
+                     'Sc5717.307',
+                     'Cr5719.815',
+                     'Ti5720.4359',
+                     'Cr5787.919',
+                     'Ba5853.668',
+                     'Ca6508.8496',
+                     'Fe6516.0766',
+                     'Ti6599.108'
+                     ]  # TODO: might even add absorption lines in the beginning of the red arm - lines are too shallow there
+# filter read linelist
+remove_linelist_rows = list([])
+for i_l_r in range(len(galah_linelist)):
+    line = galah_linelist[i_l_r]
+    line_name = line['Element'] + str(line['line_centre'])
+    # if line_name in problematic_lines:
+    #     remove_linelist_rows.append(i_l_r)
+galah_linelist.remove_rows(remove_linelist_rows)
 
 def get_solar_data(solar_input_dir, suffix, every_nth=1):
     solar_g1 = pd.read_csv(solar_input_dir + 'b1_solar_galah' + suffix + '.txt', header=None, delimiter=' ', na_values='nan').values

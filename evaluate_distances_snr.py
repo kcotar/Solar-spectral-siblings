@@ -26,23 +26,23 @@ d_wvl = 0.0
 save_plots = False
 
 # evaluate spectrum
-n_noise_samples = 100
+n_noise_samples = 1000
 noise_power = 0
 
 # reference solar spectra
 print 'Read reference GALAH Solar spectra'
 
 suffix_solar_ref = '_ext0_2_offset'
-solar_input_dir = galah_data_input+'Solar_data/'
+solar_input_dir = galah_data_input+'Solar_data_dr52/'
 
-move_to_dir(out_dir + 'Distances_SNR-functions_multioffset_allbands_subsample')
+move_to_dir(out_dir + 'Distances_SNR-functions_multioffset_allbands_subsample_guesslike')
 
 observe_bands = list([1, 2, 3, 4])
 observe_snr = range(5, 180, 1)
 observe_flux = np.arange(0, 0.21, 0.02)  # float percents  0...1
 
 for evaluate_band in observe_bands:
-    print 'Evaluationg band', evaluate_band, every_nth_solar_pixel[evaluate_band-1]
+    print 'Evaluating band', evaluate_band, every_nth_solar_pixel[evaluate_band-1]
     # solar wvl and flux data
     solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix_solar_ref, every_nth=every_nth_solar_pixel[evaluate_band-1])
     # band wvl mask
@@ -89,9 +89,20 @@ for evaluate_band in observe_bands:
                     if n_noise_samples == 1:
                         snr_noise_pred = np.zeros((n_noise_samples, len(solar_wvl)))
                     else:
-                        snr_sigma = np.sqrt((1.0 / snr_spectrum)**2)
+                        snr_sigma = 1.0/snr_spectrum
+                        # Poissonian noise
                         snr_noise_pred = np.random.poisson((1.0 / snr_sigma)**2, size=(n_noise_samples, len(solar_wvl)))
                         snr_noise_pred = snr_noise_pred / ((1.0 / snr_sigma)**2) - 1.
+                        # Gaussian noise
+                        # snr_noise_pred = np.random.normal(loc=0, scale=snr_sigma, size=(n_noise_samples, len(solar_wvl)))
+
+                    # median signal at selected abundance wavelength pixels
+                    signal = np.nanmedian(solar_flx[idx_band_lines_mask])
+                    # determine actual snr of generated noise at selected pixels - guess like
+                    signal_noisy = (signal + snr_noise_pred)[:, idx_band_lines_mask]
+                    noise = 1.4826 / np.sqrt(2) * np.nanmedian(np.abs(signal_noisy[:, 1:] - signal_noisy[:, :-1]))
+                    snr_guess_like = signal / noise
+                    print '   "Guess like" snr {:.2f}:'.format(snr_guess_like)
 
                     # iterate and add noise to observed spectrum
                     spectrum_distances = np.zeros((n_noise_samples, len(sim_metrices)))
@@ -103,7 +114,7 @@ for evaluate_band in observe_bands:
                         if save_plots:
                             pass
                     # add agregated results to final table
-                    sim_results.add_row(np.hstack([snr_spectrum, np.nanmean(spectrum_distances, axis=0),
+                    sim_results.add_row(np.hstack([snr_guess_like, np.nanmean(spectrum_distances, axis=0),
                                                    np.nanstd(spectrum_distances, axis=0), np.sum(idx_band_lines_mask)]))
 
                 # save results
@@ -119,15 +130,16 @@ for evaluate_band in observe_bands:
             f_init = models.PowerLaw1D() + models.Const1D(amplitude=0)
             fitter = fitting.LevMarLSQFitter()
             gg_fit = fitter(f_init, sim_results['snr'], sim_results[col])
-            plt.plot(observe_snr, gg_fit(observe_snr), alpha=0.5, label='Fitted curve')
+            plt.plot(observe_snr, gg_fit(observe_snr), alpha=0.2, label='Fitted curve', c='black')
             # plot
             # plt.scatter(sim_results['snr'], sim_results[col],
             #             lw=0, s=3, c='black', alpha=0.5)
+            plt.fill_between(sim_results['snr'], sim_results[col]-sim_results[col+'_std'], sim_results[col]+sim_results[col+'_std'], facecolor='black', alpha=0.20)
             plt.errorbar(sim_results['snr'], sim_results[col], yerr=sim_results[col+'_std'], c='black', alpha=0.75, errorevery=2,
                          capsize=0, elinewidth=0.75, linewidth=0.5, fmt='o', ms=1.5, label='Simulations')  #, lw=0, s=3, c='black', alpha=0.5)
             # output(s)
             plt.xlabel('Simulated SNR')
-            plt.ylabel('Similarity meassure')
+            plt.ylabel('Similarity measure')
             plt.legend()
             plt.tight_layout()
             plt.savefig(col + filename_suffix+'.png', dpi=500)

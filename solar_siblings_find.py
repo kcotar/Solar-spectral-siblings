@@ -11,20 +11,20 @@ save_plots = True
 min_wvl = min_wvl[process_bands-1]
 max_wvl = max_wvl[process_bands-1]
 
-GP_compute = True
+GP_compute = False
 save_gp_params = True
 n_threads = 20
 n_walkers = np.array([2*n_threads, 2*n_threads, 2*n_threads, 2*n_threads])[process_bands-1]
 n_steps = np.array([40, 40, 40, 40])[process_bands-1]
 
 # evaluate spectrum
-n_noise_samples = 100
+n_noise_samples = 0
 noise_power = 0
 
 # reference solar spectra
 print 'Read reference GALAH Solar spectra'
 suffix_solar_ref = '_ext0_2_offset'
-solar_input_dir = galah_data_input+'Solar_data/'
+solar_input_dir = galah_data_input+'Solar_data_dr52/'
 # solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix, every_nth=8)
 
 # data-table settings
@@ -41,7 +41,7 @@ cannon_param = Table.read(galah_data_input + cannon_param_file)
 cannon_param = join(cannon_param, galah_param['sobject_id','snr_c1_guess','snr_c2_guess','snr_c3_guess','snr_c4_guess'],
                     keys='sobject_id')
 
-idx_rows = np.logical_and(galah_param['red_flag'] == 64, galah_param['snr_c1_iraf'] > 50)
+idx_rows = np.logical_and(galah_param['red_flag'] == 64, galah_param['snr_c2_iraf'] > 50)
 idx_rows = np.logical_and(idx_rows, galah_param['flag_guess'] == 0)
 idx_rows = np.logical_and(idx_rows, galah_param['sobject_id'] > 140301000000000)
 
@@ -75,7 +75,7 @@ idx_solar_like = (np.abs(cannon_param['Teff_cannon'] - teff_solar_c) < 200) & \
 #
 idx_solar_like = np.logical_and(idx_solar_like, cannon_param['red_flag'] == 0)
 # snr selection
-idx_solar_like = np.logical_and(idx_solar_like, cannon_param['snr_c2_guess'] > 30)
+idx_solar_like = np.logical_and(idx_solar_like, cannon_param['snr_c2_iraf'] > 15)
 idx_solar_like = np.logical_and(idx_solar_like, cannon_param['sobject_id'] > 140301000000000)
 
 n_solar_like = np.sum(idx_solar_like)
@@ -299,7 +299,7 @@ for s_obj in solar_like_sobjects:
         plt.xlim(0, len(pix_spec))
         plt.tight_layout()
         # plt.show()
-        plt.savefig(str(s_obj) + '_' + str(galah_object['snr_c2_guess'].data[0])+bands_suffix+'.png', dpi=550)
+        plt.savefig(str(s_obj) + '_' + str(galah_object['snr_c2_iraf'].data[0])+bands_suffix+'.png', dpi=550)
         plt.close()
 
 # check output file with results

@@ -19,3 +19,6 @@
 
 # Hidden files
 .fuse*
+
+# Gaia folder
+Gaia_benchmark/

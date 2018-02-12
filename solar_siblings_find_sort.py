@@ -28,7 +28,7 @@ def fill_results_dictionary(res_dict, key, values):
 
 # read reference solar data
 suffix = '_ext0_2_offset'
-solar_input_dir = galah_data_input+'Solar_data/'
+solar_input_dir = galah_data_input+'Solar_data_dr52/'
 solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix)
 
 # read Galah guess and/or cannon parameters
@@ -39,8 +39,9 @@ snr_functions_dir = os.getcwd() + '/' + 'Distances_SNR-functions_multioffset_all
 
 # distance/similarity measurements
 chdir('Distances_Step1_p0_SNRsamples0')
-evaluate_bands = list([1, 2, 4])
+evaluate_bands = list([1, 2, 3, 4])
 plot_flux_offsets = [0., 0.04, 0.08, 0.12, 0.16, 0.2]
+snr_multi = 1.  # np.sqrt(4.2)  # 2.3548
 
 final_selected_objects = {}
 
@@ -52,14 +53,15 @@ for i_b in evaluate_bands:
     for metric in metrices_to_investigate(sim_res.colnames):
         print ' Metric:', metric
         metric_values = params_joined[metric]
-        snr_col = 'snr_c' + str(i_b) + '_guess'
-        snr_values = params_joined[snr_col]
-        snr_range = np.linspace(np.min(snr_values), np.max(snr_values), 200)
-        plt.errorbar(snr_values, metric_values, yerr=params_joined[metric + '_std'], fmt='o', ms=1, elinewidth=0.3,
-                     alpha=0.3)
+        snr_col = 'snr_c' + str(i_b) + '_iraf'
+        # snr_col = 'snr_c' + str(i_b) + '_guess'
+        snr_values = params_joined[snr_col] * snr_multi
+        snr_range = np.linspace(np.min(snr_values), np.max(snr_values), 600)
+        plt.errorbar(snr_values, metric_values, yerr=params_joined[metric + '_std'], fmt='o', ms=0.5, elinewidth=0.3,
+                     alpha=0.3, color='black')
         plt.ylim(0, np.nanpercentile(metric_values, 92))
         plt.title(metric + ' band:' + str(i_b))
-        plt.xlim(0, np.nanpercentile(snr_values, 99.8))
+        plt.xlim(0, 125)  # np.nanpercentile(snr_values, 99.8))
         plt.xlabel(snr_col)
         plt.ylabel(metric)
         # add SNR function for observed metric
@@ -67,15 +69,16 @@ for i_b in evaluate_bands:
             snr_metrices_functions = get_snr_metric_functions(snr_functions_dir, i_b, f_o)
             plt.plot(snr_range, metric_by_snr(snr_metrices_functions, metric, snr_range), lw=1, c='red', label='{:.2f}'.format(f_o))
         # plt.show()
-        plt.savefig(metric + '_b' + str(i_b) + '.png', dpi=450)
+        plt.savefig(metric + '_b' + str(i_b) + '_f.png', dpi=450)
         plt.close()
 
         # choose objects to be considered in the next step
         max_metric_value = metric_by_snr(get_snr_metric_functions(snr_functions_dir, i_b, 0.1),
-                                         metric, params_joined[snr_col])
+                                         metric, params_joined[snr_col]*snr_multi)
         idx_selected_sobjects = params_joined[metric] < max_metric_value
         final_selected_objects = fill_results_dictionary(final_selected_objects, metric,
                                                          np.int64(list(params_joined['sobject_id'][idx_selected_sobjects].data)))
+        # print ','.join([str(s) for s in params_joined['sobject_id'][idx_selected_sobjects]])
 
 txt_out_selection = 'final_selection.txt'
 txt = open(txt_out_selection, 'w')

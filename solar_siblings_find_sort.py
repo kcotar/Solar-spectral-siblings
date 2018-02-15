@@ -1,5 +1,6 @@
 from os import chdir
 from solar_siblings_functions import *
+from scipy.stats import kde
 
 
 def get_snr_metric_functions(data_dir, band, flux):
@@ -27,15 +28,15 @@ def fill_results_dictionary(res_dict, key, values):
 
 
 # read reference solar data
-suffix = '_ext0_2_offset'
-solar_input_dir = galah_data_input+'Solar_data_dr52/'
+suffix = '_ext0_dateall_offset'
+solar_input_dir = galah_data_input+'Solar_data_dr53/'
 solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix)
 
 # read Galah guess and/or cannon parameters
 galah_params = Table.read(galah_data_input+'sobject_iraf_52_reduced_20171111.fits')
 
 # define directory with simulations of metrics SNR functions
-snr_functions_dir = os.getcwd() + '/' + 'Distances_SNR-functions_multioffset_allbands_subsample' + '/'
+snr_functions_dir = os.getcwd() + '/' + 'Distances_SNR_models_subsample_guesslike_alllines' + '/'
 
 # distance/similarity measurements
 chdir('Distances_Step1_p0_SNRsamples0')
@@ -53,15 +54,23 @@ for i_b in evaluate_bands:
     for metric in metrices_to_investigate(sim_res.colnames):
         print ' Metric:', metric
         metric_values = params_joined[metric]
-        snr_col = 'snr_c' + str(i_b) + '_iraf'
-        # snr_col = 'snr_c' + str(i_b) + '_guess'
+        # snr_col = 'snr_c' + str(i_b) + '_iraf'
+        snr_col = 'snr_c' + str(i_b) + '_guess'
         snr_values = params_joined[snr_col] * snr_multi
         snr_range = np.linspace(np.min(snr_values), np.max(snr_values), 600)
         plt.errorbar(snr_values, metric_values, yerr=params_joined[metric + '_std'], fmt='o', ms=0.5, elinewidth=0.3,
                      alpha=0.3, color='black')
-        plt.ylim(0, np.nanpercentile(metric_values, 92))
+        y_lim = (0, np.nanpercentile(metric_values, 90))
+        x_lim = (0, 125)  # np.nanpercentile(snr_values, 99.8))
+        plt.ylim(y_lim)
         plt.title(metric + ' band:' + str(i_b))
-        plt.xlim(0, 125)  # np.nanpercentile(snr_values, 99.8))
+        plt.xlim(x_lim)
+
+        # k = kde.gaussian_kde(np.vstack([snr_values, metric_values]))
+        # xi, yi = np.mgrid[x_lim[0]:x_lim[1]:75 * 1j, y_lim[0]:y_lim[0]:75 * 1j]
+        # zi = k(np.vstack([xi.flatten(), yi.flatten()]))
+        # plt.contour(xi, yi, zi.reshape(xi.shape))
+
         plt.xlabel(snr_col)
         plt.ylabel(metric)
         # add SNR function for observed metric
@@ -69,7 +78,7 @@ for i_b in evaluate_bands:
             snr_metrices_functions = get_snr_metric_functions(snr_functions_dir, i_b, f_o)
             plt.plot(snr_range, metric_by_snr(snr_metrices_functions, metric, snr_range), lw=1, c='red', label='{:.2f}'.format(f_o))
         # plt.show()
-        plt.savefig(metric + '_b' + str(i_b) + '_f.png', dpi=450)
+        plt.savefig(metric + '_b' + str(i_b) + '_g2.png', dpi=450)
         plt.close()
 
         # choose objects to be considered in the next step

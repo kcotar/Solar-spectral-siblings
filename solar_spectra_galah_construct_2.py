@@ -33,106 +33,11 @@ from spectra_collection_functions import *
 min_wvl = list([4705, 5640, 6475, 7680])
 max_wvl = list([4915, 5885, 6750, 7900])
 rv_weights = list([0.75, 1., 1., 0.25])
-merge_all_dates = True
-
-# define regions without continuum or heavily influenced by residual telluric lines
-# prepared specifically for Sun/flats and solar like spectra
-norm_bad_ranges = [[4727.0, 4737.0],  # region without continuum
-                   [4845.0, 4875.0],  # h-beta
-                   [4902.0, 4905.0],  # useless part with problems
-                   [5787.5, 5795.0],  # atmospheric absorption bands
-                   [6492.5, 6498.0],  # region without continuum
-                   [6542.0, 6575.0],  # h-alpha + nearby region without continuum
-                   [7590.0, 7670.0]   # atmospheric absorption bands
-                   ]
-
+merge_all_dates = False
 
 # ---------------------
 # FUNCTIONS
 # ---------------------
-def get_wvl_log_shift(obs_flux, obs_wvl, ref_flux, ref_wvl, reduce_bands):
-    log_shifts_res = list([])
-    weights_res = list([])
-    for i_r in range(len(reduce_bands)):
-        ccd = reduce_bands[i_r] - 1
-        idx_ref_sub = np.logical_and(ref_wvl >= min_wvl[ccd], ref_wvl <= max_wvl[ccd])
-        ref_flux_sub = ref_flux[idx_ref_sub]
-        ref_wvl_sub = ref_wvl[idx_ref_sub]
-        wvl_step = ref_wvl_sub[1] - ref_wvl_sub[0]
-
-        obs_flux_res = spectra_resample(obs_flux[i_r], obs_wvl[i_r], ref_wvl_sub, k=1)
-
-        # correlation and stuff
-        # get a valid subset of data
-        idx_valid = np.isfinite(obs_flux_res)
-        obs_flux_res = obs_flux_res[idx_valid]
-        ref_flux_sub = ref_flux_sub[idx_valid]
-        ref_wvl_sub = ref_wvl_sub[idx_valid]
-
-        # convert spectra sampling to logspace
-        obs_flux_res_log, wvl_valid_log = spectra_logspace(obs_flux_res, ref_wvl_sub)
-        ref_flux_sub_log, _ = spectra_logspace(ref_flux_sub, ref_wvl_sub)
-
-        # correlate the two spectra
-        min_flux = 0.95
-        ref_flux_sub_log[ref_flux_sub_log > min_flux] = 0.
-        obs_flux_res_log[obs_flux_res_log > min_flux] = 0.
-        corr_res = correlate(ref_flux_sub_log, obs_flux_res_log, mode='same', method='fft')
-
-        # create a correlation subset that will actually be analysed
-        corr_w_size = 550
-        corr_c_off = np.int64(len(corr_res) / 2.)
-        corr_pos_min = corr_c_off - corr_w_size
-        corr_pos_max = corr_c_off + corr_w_size
-        corr_res_sub = corr_res[corr_pos_min:corr_pos_max]
-        corr_res_sub -= np.median(corr_res_sub)
-        corr_res_sub_x = np.arange(len(corr_res_sub))
-
-        # analyze correlation function by fitting gaussian/voigt/lorentzian distribution to it
-        fit_model = VoigtModel()
-        parameters = fit_model.guess(corr_res_sub, x=corr_res_sub_x)
-        corr_fit_res = fit_model.fit(corr_res_sub, parameters, x=corr_res_sub_x)
-        corr_center = corr_fit_res.params['center'].value
-
-        # determine the actual shift
-        idx_no_shift = np.int32(len(corr_res) / 2.)
-        idx_center = corr_c_off - corr_w_size + corr_center
-        log_shift_px = idx_no_shift - idx_center
-        log_shift_wvl = log_shift_px * wvl_step
-
-        # store to the array
-        log_shifts_res.append(log_shift_wvl)
-        weights_res.append(rv_weights[ccd])
-
-    # compute weighted mean of results
-    shift_res = np.sum(np.array(log_shifts_res)*np.array(weights_res))/np.sum(weights_res)
-    print ' Log shifts:', log_shifts_res, shift_res
-    return shift_res
-
-
-def do_wvl_shift_log_and_resample(obs_flux, obs_wvl, log_shift, ref_wvl, reduce_bands):
-    for i_r in range(len(reduce_bands)):
-        ccd = reduce_bands[i_r] - 1
-        idx_ref_sub = np.logical_and(ref_wvl >= min_wvl[ccd], ref_wvl <= max_wvl[ccd])
-        ref_wvl_sub = ref_wvl[idx_ref_sub]
-
-        obs_flux_log, obs_wvl_log = spectra_logspace(obs_flux[i_r], obs_wvl[i_r])
-        obs_wvl_log -= log_shift
-        obs_flux_res = spectra_resample(obs_flux_log, obs_wvl_log, ref_wvl_sub, k=1)
-        # save results
-        obs_flux[i_r] = obs_flux_res
-        obs_wvl[i_r] = ref_wvl_sub
-    # return results back
-    return obs_flux, obs_wvl
-
-
-def determine_norm_mask(in_wvl, ranges):
-    mask = np.isfinite(in_wvl)
-    for w_min, w_max in ranges:
-        idx_maskout = np.logical_and(in_wvl >= w_min, in_wvl <= w_max)
-        if np.sum(idx_maskout) > 0:
-            mask[idx_maskout] = False
-    return mask
 
 
 # reference solar spectra
@@ -143,7 +48,7 @@ solar_ref_flux_all = solar_ref[:, 1]
 solar_ref_wvl_all = solar_ref[:, 0]
 
 # data-table settings
-data_date = '20180212'
+data_date = '20180214'
 galah_param_file = 'sobject_iraf_'+dr_num+'_reduced_'+data_date+'.fits'
 
 # select ok objects
@@ -164,14 +69,17 @@ if merge_all_dates:
     possible_dates = ['all']
 else:
     print 'Unique dates:', len(np.unique(galah_param['date']))
-    possible_dates = np.unique(galah_param['date'])
+    galah_param['cob_id'] = np.int64(galah_param['sobject_id'] / 1e5)
+    print 'Unique fields:', len(np.unique(galah_param['cob_id']))
+    unique_merge_field = 'cob_id'  # field_id or date or something else
+    possible_unique = np.unique(galah_param[unique_merge_field])
 
-for date_sel in possible_dates:
+for date_sel in possible_unique:
     if merge_all_dates:
         flats_sobjects = galah_param['sobject_id']
     else:
-        print 'For date (' + str(date_sel) + '): ' + str(len(galah_param['date'] == date_sel))
-        galah_param_sub = galah_param[galah_param['date'] == date_sel]
+        print 'For unique field (' + str(date_sel) + '): ' + str(len(galah_param[unique_merge_field] == date_sel))
+        galah_param_sub = galah_param[galah_param[unique_merge_field] == date_sel]
         # select n with best snr per observation date if there is many spectra with good snr
         flats_sobjects = galah_param_sub[np.argsort(galah_param_sub['snr_c2_guess'])[::-1]]['sobject_id'][:75]
 

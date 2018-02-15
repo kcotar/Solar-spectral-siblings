@@ -6,13 +6,13 @@ pc_name = gethostname()
 
 # input data
 if pc_name == 'gigli' or pc_name == 'klemen-P5K-E':
-    dr52_dir = '/media/storage/HERMES_REDUCED/dr5.2/'
+    dr52_dir = '/media/storage/HERMES_REDUCED/dr5.3/'
     galah_data_input = '/home/klemen/data4_mount/'
     out_dir = ''
     imp.load_source('helper_functions', '../Carbon-Spectra/helper_functions.py')
     imp.load_source('spectra_collection_functions', '../Carbon-Spectra/spectra_collection_functions.py')
 else:
-    dr52_dir = '/data4/cotar/dr5.2/'
+    dr52_dir = '/data4/cotar/dr5.3/'
     out_dir = '/data4/cotar/'
     galah_data_input = '/data4/cotar/'
 from helper_functions import *
@@ -26,16 +26,16 @@ d_wvl = 0.0
 save_plots = False
 
 # evaluate spectrum
-n_noise_samples = 1000
+n_noise_samples = 300
 noise_power = 0
 
 # reference solar spectra
 print 'Read reference GALAH Solar spectra'
 
-suffix_solar_ref = '_ext0_2_offset'
-solar_input_dir = galah_data_input+'Solar_data_dr52/'
+suffix_solar_ref = '_ext0_dateall_offset'
+solar_input_dir = galah_data_input+'Solar_data_dr53/'
 
-move_to_dir(out_dir + 'Distances_SNR-functions_multioffset_allbands_subsample_guesslike')
+move_to_dir(out_dir + 'Distances_SNR_models_subsample_guesslike_alllines')
 
 observe_bands = list([1, 2, 3, 4])
 observe_snr = range(5, 180, 1)
@@ -97,9 +97,9 @@ for evaluate_band in observe_bands:
                         # snr_noise_pred = np.random.normal(loc=0, scale=snr_sigma, size=(n_noise_samples, len(solar_wvl)))
 
                     # median signal at selected abundance wavelength pixels
-                    signal = np.nanmedian(solar_flx[idx_band_lines_mask])
+                    signal = np.nanmedian(solar_flx)
                     # determine actual snr of generated noise at selected pixels - guess like
-                    signal_noisy = (signal + snr_noise_pred)[:, idx_band_lines_mask]
+                    signal_noisy = (signal + snr_noise_pred)
                     noise = 1.4826 / np.sqrt(2) * np.nanmedian(np.abs(signal_noisy[:, 1:] - signal_noisy[:, :-1]))
                     snr_guess_like = signal / noise
                     print '   "Guess like" snr {:.2f}:'.format(snr_guess_like)
@@ -130,11 +130,11 @@ for evaluate_band in observe_bands:
             f_init = models.PowerLaw1D() + models.Const1D(amplitude=0)
             fitter = fitting.LevMarLSQFitter()
             gg_fit = fitter(f_init, sim_results['snr'], sim_results[col])
-            plt.plot(observe_snr, gg_fit(observe_snr), alpha=0.2, label='Fitted curve', c='black')
+            plt.plot(observe_snr, gg_fit(observe_snr), alpha=0.5, label='Fitted curve', c='black', lw=0.5)
             # plot
             # plt.scatter(sim_results['snr'], sim_results[col],
             #             lw=0, s=3, c='black', alpha=0.5)
-            plt.fill_between(sim_results['snr'], sim_results[col]-sim_results[col+'_std'], sim_results[col]+sim_results[col+'_std'], facecolor='black', alpha=0.20)
+            # plt.fill_between(sim_results['snr'], sim_results[col]-sim_results[col+'_std'], sim_results[col]+sim_results[col+'_std'], facecolor='black', alpha=0.2)
             plt.errorbar(sim_results['snr'], sim_results[col], yerr=sim_results[col+'_std'], c='black', alpha=0.75, errorevery=2,
                          capsize=0, elinewidth=0.75, linewidth=0.5, fmt='o', ms=1.5, label='Simulations')  #, lw=0, s=3, c='black', alpha=0.5)
             # output(s)

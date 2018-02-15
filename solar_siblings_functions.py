@@ -10,29 +10,6 @@ import pandas as pd
 import numpy as np
 from time import time
 from scipy.spatial.distance import *
-# braycurtis(u, v[, w]) 	Computes the Bray-Curtis distance between two 1-D arrays.
-# canberra(u, v[, w]) 	Computes the Canberra distance between two 1-D arrays.
-# chebyshev(u, v) 	Computes the Chebyshev distance.
-# cityblock(u, v[, w]) 	Computes the City Block (Manhattan) distance.
-# correlation(u, v[, w, centered]) 	Computes the correlation distance between two 1-D arrays.
-# cosine(u, v[, w]) 	Computes the Cosine distance between 1-D arrays.
-# euclidean(u, v[, w]) 	Computes the Euclidean distance between two 1-D arrays.
-# mahalanobis(u, v, VI) 	Computes the Mahalanobis distance between two 1-D arrays.
-# minkowski(u, v[, p, w]) 	Computes the Minkowski distance between two 1-D arrays.
-# seuclidean(u, v, V) 	Returns the standardized Euclidean distance between two 1-D arrays.
-# sqeuclidean(u, v[, w]) 	Computes the squared Euclidean distance between two 1-D arrays.
-# wminkowski(u, v, p, w) 	Computes the weighted Minkowski distance between two 1-D arrays.
-#
-# Distance functions between two boolean vectors (representing sets) u and v. As in the case of numerical vectors, pdist is more efficient for computing the distances between all pairs.
-# dice(u, v[, w]) 	Computes the Dice dissimilarity between two boolean 1-D arrays.
-# hamming(u, v[, w]) 	Computes the Hamming distance between two 1-D arrays.
-# jaccard(u, v[, w]) 	Computes the Jaccard-Needham dissimilarity between two boolean 1-D arrays.
-# kulsinski(u, v[, w]) 	Computes the Kulsinski dissimilarity between two boolean 1-D arrays.
-# rogerstanimoto(u, v[, w]) 	Computes the Rogers-Tanimoto dissimilarity between two boolean 1-D arrays.
-# russellrao(u, v[, w]) 	Computes the Russell-Rao dissimilarity between two boolean 1-D arrays.
-# sokalmichener(u, v[, w]) 	Computes the Sokal-Michener dissimilarity between two boolean 1-D arrays.
-# sokalsneath(u, v[, w]) 	Computes the Sokal-Sneath dissimilarity between two boolean 1-D arrays.
-# yule(u, v[, w]) 	Computes the Yule dissimilarity between two boolean 1-D arrays.
 
 min_wvl = np.array([4725, 5665, 6485, 7700])
 max_wvl = np.array([4895, 5865, 6725, 7875])
@@ -45,13 +22,13 @@ pc_name = gethostname()
 
 # input data
 if pc_name == 'gigli' or pc_name == 'klemen-P5K-E':
-    dr52_dir = '/media/storage/HERMES_REDUCED/dr5.2/'
+    dr52_dir = '/media/storage/HERMES_REDUCED/dr5.3/'
     galah_data_input = '/home/klemen/data4_mount/'
     out_dir = ''
     imp.load_source('helper_functions', '../Carbon-Spectra/helper_functions.py')
     imp.load_source('spectra_collection_functions', '../Carbon-Spectra/spectra_collection_functions.py')
 else:
-    dr52_dir = '/data4/cotar/dr5.2/'
+    dr52_dir = '/data4/cotar/dr5.3/'
     out_dir = '/data4/cotar/'
     galah_data_input = '/data4/cotar/'
 from helper_functions import *
@@ -61,15 +38,34 @@ galah_linelist = Table.read(galah_data_input + 'GALAH_Cannon_linelist_newer.csv'
 # define lines with clearly visible telluric contamination between different night
 problematic_lines = ['Ti5689.46',
                      'Si5690.425',
+                     'Fe5696.0892',
                      'Sc5717.307',
                      'Cr5719.815',
                      'Ti5720.4359',
+                     'Sc5724.107',
                      'Cr5787.919',
                      'Ba5853.668',
+                     #'Ti5866.4513',
+                     #'Ca5867.562',
+                     'Ni6482.7983',
                      'Ca6508.8496',
                      'Fe6516.0766',
+                     'Fe6518.3657',
+                     #'Ni6532.873',
                      'Ti6599.108'
                      ]  # TODO: might even add absorption lines in the beginning of the red arm - lines are too shallow there
+
+# define regions without continuum or heavily influenced by residual telluric lines
+# prepared specifically for Sun/flats and solar like spectra
+norm_bad_ranges = [[4727.0, 4737.0],  # region without continuum
+                   [4845.0, 4875.0],  # h-beta
+                   [4902.0, 4905.0],  # useless part with problems
+                   [5787.5, 5795.0],  # atmospheric absorption bands
+                   [6492.5, 6498.0],  # region without continuum
+                   [6542.0, 6575.0],  # h-alpha + nearby region without continuum
+                   [7590.0, 7670.0]   # atmospheric absorption bands
+                   ]
+
 # filter read linelist
 remove_linelist_rows = list([])
 for i_l_r in range(len(galah_linelist)):
@@ -79,13 +75,19 @@ for i_l_r in range(len(galah_linelist)):
     #     remove_linelist_rows.append(i_l_r)
 galah_linelist.remove_rows(remove_linelist_rows)
 
-def get_solar_data(solar_input_dir, suffix, every_nth=1):
-    solar_g1 = pd.read_csv(solar_input_dir + 'b1_solar_galah' + suffix + '.txt', header=None, delimiter=' ', na_values='nan').values
-    solar_g2 = pd.read_csv(solar_input_dir + 'b2_solar_galah' + suffix + '.txt', header=None, delimiter=' ', na_values='nan').values
-    solar_g3 = pd.read_csv(solar_input_dir + 'b3_solar_galah' + suffix + '.txt', header=None, delimiter=' ', na_values='nan').values
-    solar_g4 = pd.read_csv(solar_input_dir + 'b4_solar_galah' + suffix + '.txt', header=None, delimiter=' ', na_values='nan').values
-    solar_wvl = np.hstack((solar_g1[:, 0], solar_g2[:, 0], solar_g3[:, 0], solar_g4[:, 0]))
-    solar_flx = np.hstack((solar_g1[:, 1], solar_g2[:, 1], solar_g3[:, 1], solar_g4[:, 1]))
+
+def get_solar_data(solar_input_dir, suffix, every_nth=1, bands_together=True):
+    if bands_together:
+        solar_all = pd.read_csv(solar_input_dir + 'twilight_spectrum_galah' + suffix + '.txt', header=None, delimiter=' ', na_values='nan').values
+        solar_wvl = solar_all[:, 0]
+        solar_flx = solar_all[:, 1]
+    else:
+        solar_g1 = pd.read_csv(solar_input_dir + 'b1_solar_galah' + suffix + '.txt', header=None, delimiter=' ', na_values='nan').values
+        solar_g2 = pd.read_csv(solar_input_dir + 'b2_solar_galah' + suffix + '.txt', header=None, delimiter=' ', na_values='nan').values
+        solar_g3 = pd.read_csv(solar_input_dir + 'b3_solar_galah' + suffix + '.txt', header=None, delimiter=' ', na_values='nan').values
+        solar_g4 = pd.read_csv(solar_input_dir + 'b4_solar_galah' + suffix + '.txt', header=None, delimiter=' ', na_values='nan').values
+        solar_wvl = np.hstack((solar_g1[:, 0], solar_g2[:, 0], solar_g3[:, 0], solar_g4[:, 0]))
+        solar_flx = np.hstack((solar_g1[:, 1], solar_g2[:, 1], solar_g3[:, 1], solar_g4[:, 1]))
     idx_finite = np.isfinite(solar_flx)
     if every_nth <= 1:
         return solar_wvl[idx_finite], solar_flx[idx_finite]
@@ -283,7 +285,8 @@ def plot_spectra(s_ids, spectra_dir_2, g_data, solar_flx, solar_wvl,
     plt.close()
 
 
-def plot_spectra_with_difference(flux1, flux2, wvl, flux3=None, x_range=None, linelist=None):
+def plot_spectra_with_difference(flux1, flux2, wvl, flux3=None, diff_func=None,
+                                 x_range=None, linelist=None, path=None, title=None):
     plt.figure(1, figsize=(12, 7))
     # [left, bottom, width, height]
     axSpectra = plt.axes([0.05, 0.3, 0.92, 0.65])
@@ -294,6 +297,8 @@ def plot_spectra_with_difference(flux1, flux2, wvl, flux3=None, x_range=None, li
         axSpectra.plot(wvl, flux3, c='red', lw=1.)
     axDiff.axhline(y=0, c='black', lw=1)
     axDiff.plot(wvl, flux1-flux2, c='blue', lw=1.)
+    if diff_func is not None:
+        axDiff.plot(wvl, diff_func, c='red', lw=1)
     axSpectra.set(ylim=(0.3, 1.1), xlim=x_range)
     axDiff.set(ylim=(-0.04, 0.04), xlim=x_range)
     if linelist is not None:
@@ -302,5 +307,95 @@ def plot_spectra_with_difference(flux1, flux2, wvl, flux3=None, x_range=None, li
             if line['line_centre'] < wvl[-1] and line['line_centre'] > wvl[0]:
                 axSpectra.axvspan(line['line_start'] - d_abs_wvl, line['line_end'] + d_abs_wvl, lw=0, color='black', alpha=0.2)
                 axDiff.axvspan(line['line_start'] - d_abs_wvl, line['line_end'] + d_abs_wvl, lw=0, color='black', alpha=0.2)
-    plt.show()
+    if title is not None:
+        axSpectra.set_title(title)
+    if path is not None:
+        plt.savefig(path, dpi=400)
+    else:
+        plt.show()
     plt.close()
+
+
+def get_wvl_log_shift(obs_flux, obs_wvl, ref_flux, ref_wvl, reduce_bands):
+    log_shifts_res = list([])
+    weights_res = list([])
+    for i_r in range(len(reduce_bands)):
+        ccd = reduce_bands[i_r] - 1
+        idx_ref_sub = np.logical_and(ref_wvl >= min_wvl[ccd], ref_wvl <= max_wvl[ccd])
+        ref_flux_sub = ref_flux[idx_ref_sub]
+        ref_wvl_sub = ref_wvl[idx_ref_sub]
+        wvl_step = ref_wvl_sub[1] - ref_wvl_sub[0]
+
+        obs_flux_res = spectra_resample(obs_flux[i_r], obs_wvl[i_r], ref_wvl_sub, k=1)
+
+        # correlation and stuff
+        # get a valid subset of data
+        idx_valid = np.isfinite(obs_flux_res)
+        obs_flux_res = obs_flux_res[idx_valid]
+        ref_flux_sub = ref_flux_sub[idx_valid]
+        ref_wvl_sub = ref_wvl_sub[idx_valid]
+
+        # convert spectra sampling to logspace
+        obs_flux_res_log, wvl_valid_log = spectra_logspace(obs_flux_res, ref_wvl_sub)
+        ref_flux_sub_log, _ = spectra_logspace(ref_flux_sub, ref_wvl_sub)
+
+        # correlate the two spectra
+        min_flux = 0.95
+        ref_flux_sub_log[ref_flux_sub_log > min_flux] = 0.
+        obs_flux_res_log[obs_flux_res_log > min_flux] = 0.
+        corr_res = correlate(ref_flux_sub_log, obs_flux_res_log, mode='same', method='fft')
+
+        # create a correlation subset that will actually be analysed
+        corr_w_size = 550
+        corr_c_off = np.int64(len(corr_res) / 2.)
+        corr_pos_min = corr_c_off - corr_w_size
+        corr_pos_max = corr_c_off + corr_w_size
+        corr_res_sub = corr_res[corr_pos_min:corr_pos_max]
+        corr_res_sub -= np.median(corr_res_sub)
+        corr_res_sub_x = np.arange(len(corr_res_sub))
+
+        # analyze correlation function by fitting gaussian/voigt/lorentzian distribution to it
+        fit_model = VoigtModel()
+        parameters = fit_model.guess(corr_res_sub, x=corr_res_sub_x)
+        corr_fit_res = fit_model.fit(corr_res_sub, parameters, x=corr_res_sub_x)
+        corr_center = corr_fit_res.params['center'].value
+
+        # determine the actual shift
+        idx_no_shift = np.int32(len(corr_res) / 2.)
+        idx_center = corr_c_off - corr_w_size + corr_center
+        log_shift_px = idx_no_shift - idx_center
+        log_shift_wvl = log_shift_px * wvl_step
+
+        # store to the array
+        log_shifts_res.append(log_shift_wvl)
+        weights_res.append(rv_weights[ccd])
+
+    # compute weighted mean of results
+    shift_res = np.sum(np.array(log_shifts_res)*np.array(weights_res))/np.sum(weights_res)
+    print ' Log shifts:', log_shifts_res, shift_res
+    return shift_res
+
+
+def do_wvl_shift_log_and_resample(obs_flux, obs_wvl, log_shift, ref_wvl, reduce_bands):
+    for i_r in range(len(reduce_bands)):
+        ccd = reduce_bands[i_r] - 1
+        idx_ref_sub = np.logical_and(ref_wvl >= min_wvl[ccd], ref_wvl <= max_wvl[ccd])
+        ref_wvl_sub = ref_wvl[idx_ref_sub]
+
+        obs_flux_log, obs_wvl_log = spectra_logspace(obs_flux[i_r], obs_wvl[i_r])
+        obs_wvl_log -= log_shift
+        obs_flux_res = spectra_resample(obs_flux_log, obs_wvl_log, ref_wvl_sub, k=1)
+        # save results
+        obs_flux[i_r] = obs_flux_res
+        obs_wvl[i_r] = ref_wvl_sub
+    # return results back
+    return obs_flux, obs_wvl
+
+
+def determine_norm_mask(in_wvl, ranges):
+    mask = np.isfinite(in_wvl)
+    for w_min, w_max in ranges:
+        idx_maskout = np.logical_and(in_wvl >= w_min, in_wvl <= w_max)
+        if np.sum(idx_maskout) > 0:
+            mask[idx_maskout] = False
+    return mask

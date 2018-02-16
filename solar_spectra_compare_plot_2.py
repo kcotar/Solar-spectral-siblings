@@ -36,7 +36,7 @@ solar_ref = pd.read_csv(solar_data_dir + 'solar_spectra.txt', header=None, delim
 solar_ref_conv = pd.read_csv(solar_data_dir + 'solar_spectra_conv.txt', header=None, delimiter=' ', na_values='nan').values
 
 # Galah spectrum
-twilight_spectrum_file = 'twilight_spectrum_galah_ext0_dateall.txt'
+twilight_spectrum_file = 'twilight_spectrum_galah_ext4_dateall.txt'
 solar_galah = pd.read_csv(solar_data_dir + twilight_spectrum_file, header=None, delimiter=' ', na_values='nan').values
 
 # # convolve solar spectrum - different, modified and visually modified values
@@ -59,8 +59,8 @@ ord = 1
 min_wvl_offset = np.array([4715, 5665, 6485, 7700])
 max_wvl_offset = np.array([4890, 5865, 6725, 7875])
 
-perform_analysis = False
-final_output = True
+perform_analysis = True
+final_output = False
 
 
 def get_spectrum_with_offset(flx, wvl, offset, offset_amp, offset_wvl_range):
@@ -70,7 +70,7 @@ def get_spectrum_with_offset(flx, wvl, offset, offset_amp, offset_wvl_range):
                              sigma_high=sh, order=ord, func='poly')
 
 
-move_to_dir('Twilight_offset_determine')
+move_to_dir('Twilight_offset_determine_ext4')
 
 if perform_analysis:
     for i_b in range(4):
@@ -84,8 +84,9 @@ if perform_analysis:
 
         results = []
         idx_sim = np.logical_and(wvl_galah >= min_wvl_offset[i_b], wvl_galah <= max_wvl_offset[i_b])
-        for flux_offset_amp in np.arange(0, 0.11, 0.005):
-            for flux_offset in np.arange(0, 0.11, 0.005):
+        for flux_offset_amp in np.arange(0, 0.1, 0.01):
+            for flux_offset in np.arange(0, 0.1, 0.01):
+                print flux_offset, flux_offset_amp
                 flx_galah_new = get_spectrum_with_offset(flx_galah, wvl_galah, flux_offset, flux_offset_amp, flux_offset_wvl_range)
                 flx_diff = flx_ref-flx_galah_new
                 flx_diff_fit = spectra_normalize(wvl_galah - np.mean(wvl_galah), flx_diff,

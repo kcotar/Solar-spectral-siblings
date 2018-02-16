@@ -33,7 +33,7 @@ from spectra_collection_functions import *
 min_wvl = list([4705, 5640, 6475, 7680])
 max_wvl = list([4915, 5885, 6750, 7900])
 rv_weights = list([0.75, 1., 1., 0.25])
-merge_all_dates = False
+merge_all_dates = True
 
 # ---------------------
 # FUNCTIONS
@@ -53,7 +53,7 @@ galah_param_file = 'sobject_iraf_'+dr_num+'_reduced_'+data_date+'.fits'
 
 # select ok objects
 galah_param = Table.read(galah_data_input + galah_param_file)
-idx_rows = np.logical_and(galah_param['red_flag'] == 64, galah_param['snr_c2_iraf'] > 150)
+idx_rows = np.logical_and(galah_param['red_flag'] == 64, galah_param['snr_c2_guess'] > 220)
 idx_rows = np.logical_and(idx_rows, galah_param['flag_guess'] == 0)
 idx_rows = np.logical_and(idx_rows, galah_param['sobject_id'] > 140301000000000)
 galah_param = galah_param[idx_rows]
@@ -62,11 +62,11 @@ print 'Number of solar spectra:', len(to_read_row)
 
 # galah_param = galah_param[list(np.int64(np.random.rand(500)*len(galah_param)))]
 
-read_ext = 0
+read_ext = 4
 reduce_bands = list([1, 2, 3, 4])
 
 if merge_all_dates:
-    possible_dates = ['all']
+    possible_unique = ['all']
 else:
     print 'Unique dates:', len(np.unique(galah_param['date']))
     galah_param['cob_id'] = np.int64(galah_param['sobject_id'] / 1e5)

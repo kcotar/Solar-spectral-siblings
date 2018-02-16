@@ -1,13 +1,30 @@
 from solar_siblings_functions import *
-
+import sys, getopt
 
 # -----------------------------------
 # --------- Settings ----------------
 # -----------------------------------
-process_bands = np.array([1,2,3,4])  # in range 1...4
+# parse inputs from command line
+
+process_bands = np.array([1])  # in range 1...4
+read_ext = 0
+
+argv = sys.argv
+if len(argv) > 1:
+    # parse input options
+    opts, args = getopt.getopt(argv[1:], '', ['bands=', 'ext='])
+    # set parameters, depending on user inputs
+    print opts
+    for o, a in opts:
+        if o == '--bands':
+            process_bands = np.array([np.int32(b) for b in a.split(',')])
+            print 'Command line selected bands: ' + ','.join([str(pb) for pb in process_bands])
+        if o == '--ext':
+            read_ext = np.int8(a)
 
 d_wvl = 0.0
 save_plots = False
+output_differences = True  # so far available only for the first analysis step
 min_wvl = min_wvl[process_bands-1]
 max_wvl = max_wvl[process_bands-1]
 
@@ -46,7 +63,7 @@ idx_rows = np.logical_and(idx_rows, galah_param['flag_guess'] == 0)
 idx_rows = np.logical_and(idx_rows, galah_param['sobject_id'] > 140301000000000)
 
 # same for Cannon
-idx_row_cannon = np.in1d(cannon_param['sobject_id'],galah_param[idx_rows]['sobject_id'])
+idx_row_cannon = np.in1d(cannon_param['sobject_id'], galah_param[idx_rows]['sobject_id'])
 teff_solar_c = np.nanmedian(cannon_param[idx_row_cannon]['Teff_cannon'])
 teff_solar_std_c = np.nanstd(cannon_param[idx_row_cannon]['Teff_cannon'])
 logg_solar_c = np.nanmedian(cannon_param[idx_row_cannon]['Logg_cannon'])
@@ -66,7 +83,7 @@ idx_solar_like = (np.abs(cannon_param['Teff_cannon'] - teff_solar_c) < 200) & \
 #
 idx_solar_like = np.logical_and(idx_solar_like, cannon_param['red_flag'] == 0)
 # snr selection
-idx_solar_like = np.logical_and(idx_solar_like, cannon_param['snr_c2_guess'] > 20)
+idx_solar_like = np.logical_and(idx_solar_like, cannon_param['snr_c2_guess'] > 0)
 idx_solar_like = np.logical_and(idx_solar_like, cannon_param['sobject_id'] > 140301000000000)
 
 n_solar_like = np.sum(idx_solar_like)
@@ -77,14 +94,15 @@ print 'Solar like by parameters:', n_solar_like
 # -----------------------------------
 
 solar_like_sobjects = cannon_param['sobject_id'][idx_solar_like]
-sim_metrices = ['braycurtis', 'canberra', 'chebyshev', 'cityblock', 'correlation', 'cosine', 'minkowski','wchebyshev','sqeuclidean','euclidean','chi2', 'EW']
+sim_metrices = ['braycurtis', 'canberra', 'chebyshev', 'cityblock', 'correlation', 'cosine', 'minkowski','wchebyshev','sqeuclidean','euclidean','chi2', 'EW', 'median_sep']
 sim_metrices_std = [m+'_std' for m in sim_metrices]
 sim_dtypes = ['float64' for i in range(2*len(sim_metrices))]
-sim_results = Table(names=np.hstack(('sobject_id', sim_metrices, sim_metrices_std)),
-                    dtype=(np.hstack(('int64', sim_dtypes))))
+sim_results = Table(names=np.hstack(('sobject_id', 'snr_spectrum', sim_metrices, sim_metrices_std)),
+                    dtype=(np.hstack(('int64', 'float64', sim_dtypes))))
 
 bands_suffix = '_b'+''.join([str(b) for b in process_bands])
 dir_suffix = '_p'+str(noise_power)+'_SNRsamples'+str(n_noise_samples)
+dir_suffix += '_ext'+str(read_ext)
 if GP_compute:
     txt_out = 'GP_fit_res.txt'
     move_to_dir(out_dir + 'Distances_Step2' + dir_suffix)
@@ -92,6 +110,7 @@ else:
     move_to_dir(out_dir + 'Distances_Step1' + dir_suffix)
 
 file_out_fits = 'solar_similarity'+bands_suffix+'.fits'
+file_out_diff = 'solar_spectral_diff'+bands_suffix+'.csv'
 
 # predetermined objects
 # solar_like_sobjects = [
@@ -102,11 +121,15 @@ file_out_fits = 'solar_similarity'+bands_suffix+'.fits'
 # n_rand = 25
 # solar_like_sobjects = solar_like_sobjects[np.int64(np.random.rand(n_rand)*len(solar_like_sobjects))]
 
+# first erase all results from previous processing runs
+if output_differences:
+    csv_diff = open(file_out_diff, 'w')
+    csv_diff.close()
+
 for s_obj in solar_like_sobjects:
     print 'Evaluating', s_obj
     galah_object = galah_param[galah_param['sobject_id'] == s_obj]
     # get spectra of all bands for observed objects
-    read_ext = 0
     # flux, wvl = get_spectra_dr52(str(s_obj), bands=[1, 2, 3, 4], root=dr52_dir, extension=read_ext, individual=False)
     flux, wvl, flux_std = get_spectra_dr52(str(s_obj), bands=process_bands, root=dr52_dir, extension=read_ext,
                                            individual=False, read_sigma=True)
@@ -124,12 +147,27 @@ for s_obj in solar_like_sobjects:
                 flux[i_c] = spectra_normalize(wvl[i_c]-np.mean(wvl[i_c]), flux[i_c], fit_mask=norm_ok_mask,
                                               steps=15, sigma_low=2., sigma_high=3., order=11, n_min_perc=5.,
                                               return_fit=False, func='cheb')
+                # # additional normalization step with symmetric sigma rejection intervals to cancel out noise
+                # flux[i_c] = spectra_normalize(wvl[i_c] - np.mean(wvl[i_c]), flux[i_c], fit_mask=norm_ok_mask,
+                #                               steps=15, sigma_low=2.5, sigma_high=2.5, order=1, n_min_perc=5.,
+                #                               return_fit=False, func='poly')
             # apply computed rv shift to the spectrum
             rv_shift = galah_object['rv_guess_shift']
             wvl *= (1 - rv_shift / 299792.458)
         except:
             print ' -> Something wrong with spectra or reading'
             continue
+
+    # compute guess like snr for particular spectrum and observed region
+    # get absorption features indices
+    idx_lines_mask = get_linelist_mask(np.hstack(wvl))
+    flx_all_abs = np.hstack(flux)[idx_lines_mask]
+    # median signal at selected abundance wavelength pixels
+    snr_signal = np.nanmedian(flx_all_abs)
+    # determine actual snr of generated noise at selected pixels - guess like
+    snr_noise = 1.4826 / np.sqrt(2) * np.nanmedian(np.abs(flx_all_abs[1:] - flx_all_abs[:-1]))
+    snr_guesslike = snr_signal / snr_noise
+    # print 'SNRs:', galah_object['snr_c' + str(i_c + 1) + '_guess'].data[0], snr_guesslike
 
     pix_ref = list([])
     pix_ref_noise = list([])
@@ -243,7 +281,6 @@ for s_obj in solar_like_sobjects:
 
             # define subset of spectra to be compared to reference solar spectrum
             abs_lines_cols = np.where(idx_lines_mask[idx_ref])[0]
-
             # print flux[i_c], wvl[i_c], solar_wvl[idx_ref]
             flux_b_res = spectra_resample(flux[i_c], wvl[i_c], solar_wvl[idx_ref], k=1)
             flux_std_b_res = spectra_resample(flux_std[i_c], wvl[i_c], solar_wvl[idx_ref], k=1)
@@ -277,25 +314,34 @@ for s_obj in solar_like_sobjects:
     # iterate and add noise to observed spectrum
     n_distances_compute = np.max([n_noise_samples, 1])
     spectrum_distances = np.zeros((n_distances_compute, len(sim_metrices)))
+    if save_plots:
+        plt.figure(1, figsize=(12, 7))
+        axSpectra = plt.axes([0.05, 0.3, 0.92, 0.65])
+        axDiff = plt.axes([0.05, 0.05, 0.92, 0.20])
     for i_snr in range(n_distances_compute):
         # determine weights for the distance computation (different approaches)
         spectrum_distances[i_snr, :] = compute_distances(pix_spec, pix_std, pix_ref_noise[i_snr, :] + pix_ref, d=noise_power)
         if save_plots:
-            plt.figure(1, figsize=(12, 7))
-            axSpectra = plt.axes([0.05, 0.3, 0.92, 0.65])
-            axDiff = plt.axes([0.05, 0.05, 0.92, 0.20])
             axSpectra.plot(pix_ref_noise[i_snr, :] + pix_ref, lw=0.2, alpha=0.01, c='blue')
+        if output_differences:
+            csv_diff = open(file_out_diff, 'a')
+            if os.path.getsize(file_out_diff) == 0:  # size of file is zero -> add wavelength header info
+                csv_diff.write('0,'+','.join([str(sw) for sw in solar_wvl[idx_ref][abs_lines_cols]])+'\n')
+            diff_csv_string = ','.join([str(pf) for pf in (pix_spec - (pix_ref_noise[i_snr, :] + pix_ref))])
+            csv_diff.write(str(s_obj)+','+diff_csv_string+'\n')
+            csv_diff.close()
 
     # add agregated results to final table
-    sim_results.add_row(np.hstack([s_obj, np.nanmean(spectrum_distances, axis=0), np.nanstd(spectrum_distances, axis=0)]))
+    sim_results.add_row(np.hstack([s_obj, snr_guesslike, np.nanmean(spectrum_distances, axis=0), np.nanstd(spectrum_distances, axis=0)]))
     if save_plots:
         axSpectra.plot(pix_ref, c='black', lw=0.5)
         axSpectra.plot(pix_spec, c='blue', lw=0.5)
         axDiff.axhline(y=0, c='black', lw=0.5)
         axDiff.plot(pix_ref-pix_spec, c='blue', lw=0.5)
-        axSpectra.set(ylim=(0.3, 1.1))
+        axSpectra.set(ylim=(0.3, 1.15))
         axDiff.set(ylim=(-0.05, 0.05))
-        plt.savefig(str(s_obj) + '_' + str(galah_object['snr_c2_guess'].data[0])+bands_suffix+'_flat-new.png', dpi=550)
+        axSpectra.set_title('SNR from abs lines: {:.2f}'.format(snr_guesslike))
+        plt.savefig(str(s_obj) + '_' + str(galah_object['snr_c2_guess'].data[0])+bands_suffix+'.png', dpi=350)
         plt.close()
 
 # check output file with results
@@ -304,7 +350,7 @@ if os.path.isfile(file_out_fits):
 sim_results.write(file_out_fits)
 
 '''
-print sim_results
+print sim_results5
 print ''
 sobj_id_like = sim_results[np.argsort(sim_results['chi2'])[:75]]['sobject_id']
 print ','.join([str(s) for s in sobj_id_like])

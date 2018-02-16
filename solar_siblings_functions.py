@@ -1,8 +1,11 @@
-import matplotlib
-matplotlib.use('Agg')
+from socket import gethostname
+# PC hostname
+pc_name = gethostname()
+if pc_name != 'gigli':
+    import matplotlib
+    matplotlib.use('Agg')
 import os, imp
 from astropy.table import Table, join
-from socket import gethostname
 import matplotlib.pyplot as plt
 import george, emcee, corner
 from george import kernels
@@ -10,15 +13,13 @@ import pandas as pd
 import numpy as np
 from time import time
 from scipy.spatial.distance import *
+np.seterr(all='ignore')
 
 min_wvl = np.array([4725, 5665, 6485, 7700])
 max_wvl = np.array([4895, 5865, 6725, 7875])
 
 every_nth_solar_pixel = np.array([4, 5, 6, 7])  # double sub-sampling of spectra
 # every_nth_solar_pixel = np.array([8, 10, 12, 14])  # almost original sampling of the data - GP works much faster with this
-
-# PC hostname
-pc_name = gethostname()
 
 # input data
 if pc_name == 'gigli' or pc_name == 'klemen-P5K-E':
@@ -213,7 +214,8 @@ def compute_distances(obs, obs_std, orig, d=1., norm=True):
                     sqeuclidean(obs, orig, w=dist_weight)/n_data,  #
                     np.sum(np.sqrt(spec_diff**2. * dist_weight))/n_data,  # euclidean(pix_ref, pix_spec, w=dist_weight),
                     np.sum(spec_diff**2. * dist_weight)/n_data,
-                    np.abs(np.sum(1. - obs) - np.sum(1. - orig))/n_data]
+                    np.abs(np.sum(1. - obs) - np.sum(1. - orig))/n_data,
+                    np.nanmedian(orig - obs)]  # difference in median levels, aka median spectral difference
     return results_list
 
 

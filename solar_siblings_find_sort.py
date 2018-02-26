@@ -36,12 +36,12 @@ solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix)
 galah_params = Table.read(galah_data_input+'sobject_iraf_53_reduced_20180214.fits')
 
 # define directory with simulations of metrics SNR functions
-snr_functions_dir = os.getcwd() + '/' + 'Distances_SNR_models_subsample_guesslike-abslines_gauss' + '/'
+snr_functions_dir = os.getcwd() + '/' + 'Distances_SNR_models_subsample_guesslike-alllines_gauss_oklinesonly' + '/'
 
 # distance/similarity measurements
-chdir('Distances_Step1_p0_SNRsamples0_norenorm')
+chdir('Distances_Step1_p0_SNRsamples0_ext4_oklinesonly_2')
 evaluate_bands = list([1, 2, 3, 4])
-plot_flux_offsets = [0., 0.1]  # [0., 0.04, 0.08, 0.12, 0.16, 0.2]
+plot_flux_offsets = [0., 0.1, 0.2]  # [0., 0.04, 0.08, 0.12, 0.16, 0.2]
 snr_multi = 1.  # np.sqrt(4.2)  # 2.3548
 
 final_selected_objects = {}
@@ -55,16 +55,17 @@ for i_b in evaluate_bands:
         print ' Metric:', metric
         metric_values = params_joined[metric]
         # snr_col = 'snr_c' + str(i_b) + '_iraf'
-        snr_col = 'snr_c' + str(i_b) + '_guess'
-        # snr_col = 'snr_spectrum'
+        # snr_col = 'snr_c' + str(i_b) + '_guess'
+        snr_col = 'snr_spectrum'
         snr_values = params_joined[snr_col] * snr_multi
         snr_range = np.linspace(10, np.max(snr_values), 600)
-        plt.errorbar(snr_values, metric_values, yerr=params_joined[metric + '_std'], fmt='o', ms=0.5, elinewidth=0.3,
-                     alpha=0.3, color='black')
         if 'median' in metric:
             y_lim = (np.nanpercentile(metric_values, 0.5), np.nanpercentile(metric_values, 99.5))
+            plt.scatter(snr_values, metric_values, s=0.5, alpha=0.3, color='black')
         else:
             y_lim = (0, np.nanpercentile(metric_values, 90))
+            plt.errorbar(snr_values, metric_values, yerr=params_joined[metric + '_std'], fmt='o', ms=0.5,
+                         elinewidth=0.3, alpha=0.3, color='black')
         x_lim = (0, 125)  # np.nanpercentile(snr_values, 99.8))
         plt.ylim(y_lim)
         plt.title(metric + ' band:' + str(i_b))
@@ -78,20 +79,22 @@ for i_b in evaluate_bands:
         plt.xlabel(snr_col)
         plt.ylabel(metric)
         # add SNR function for observed metric
-        for f_o in plot_flux_offsets:
-            snr_metrices_functions = get_snr_metric_functions(snr_functions_dir, i_b, f_o)
-            plt.plot(snr_range, metric_by_snr(snr_metrices_functions, metric, snr_range), lw=1, c='red', label='{:.2f}'.format(f_o))
-        # plt.show()
-        plt.savefig(metric + '_b' + str(i_b) + '_g1.png', dpi=450)
-        plt.close()
+        if 'median' not in metric:
+            for f_o in plot_flux_offsets:
+                snr_metrices_functions = get_snr_metric_functions(snr_functions_dir, i_b, f_o)
+                plt.plot(snr_range, metric_by_snr(snr_metrices_functions, metric, snr_range), lw=1, c='red', label='{:.2f}'.format(f_o))
 
-        # choose objects to be considered in the next step
-        max_metric_value = metric_by_snr(get_snr_metric_functions(snr_functions_dir, i_b, 0.),
-                                         metric, params_joined[snr_col]*snr_multi)
-        idx_selected_sobjects = params_joined[metric] < max_metric_value
-        final_selected_objects = fill_results_dictionary(final_selected_objects, metric,
-                                                         np.int64(list(params_joined['sobject_id'][idx_selected_sobjects].data)))
-        # print ','.join([str(s) for s in params_joined['sobject_id'][idx_selected_sobjects]])
+            # choose objects to be considered in the next step
+            max_metric_value = metric_by_snr(get_snr_metric_functions(snr_functions_dir, i_b, 0.1),
+                                             metric, params_joined[snr_col]*snr_multi)
+            idx_selected_sobjects = params_joined[metric] < max_metric_value
+            final_selected_objects = fill_results_dictionary(final_selected_objects, metric,
+                                                             np.int64(list(params_joined['sobject_id'][idx_selected_sobjects].data)))
+            # print ','.join([str(s) for s in params_joined['sobject_id'][idx_selected_sobjects]])
+
+        # plt.show()
+        plt.savefig(metric + '_b' + str(i_b) + '_g-all.png', dpi=450)
+        plt.close()
 
 txt_out_selection = 'final_selection.txt'
 txt = open(txt_out_selection, 'w')

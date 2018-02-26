@@ -5,8 +5,10 @@ import numpy as np
 import pandas as pd
 import varconvolve as varcon
 from scipy import mgrid
+from lmfit import minimize, Minimizer, Parameters, Parameter, report_fit
 
-from solar_siblings_functions import plot_spectra_with_difference
+
+from solar_siblings_functions import *
 
 imp.load_source('helper_functions', '../Carbon-Spectra/helper_functions.py')
 from helper_functions import spectra_normalize, move_to_dir
@@ -36,7 +38,7 @@ solar_ref = pd.read_csv(solar_data_dir + 'solar_spectra.txt', header=None, delim
 solar_ref_conv = pd.read_csv(solar_data_dir + 'solar_spectra_conv.txt', header=None, delimiter=' ', na_values='nan').values
 
 # Galah spectrum
-twilight_spectrum_file = 'twilight_spectrum_galah_ext4_dateall.txt'
+twilight_spectrum_file = 'twilight_spectrum_galah_ext0_dateall.txt'
 solar_galah = pd.read_csv(solar_data_dir + twilight_spectrum_file, header=None, delimiter=' ', na_values='nan').values
 
 # # convolve solar spectrum - different, modified and visually modified values
@@ -61,6 +63,7 @@ max_wvl_offset = np.array([4890, 5865, 6725, 7875])
 
 perform_analysis = True
 final_output = False
+fit_for_best = True
 
 
 def get_spectrum_with_offset(flx, wvl, offset, offset_amp, offset_wvl_range):
@@ -70,7 +73,56 @@ def get_spectrum_with_offset(flx, wvl, offset, offset_amp, offset_wvl_range):
                              sigma_high=sh, order=ord, func='poly')
 
 
-move_to_dir('Twilight_offset_determine_ext4')
+move_to_dir('Twilight_offset_determine_ext0_lmfit')
+
+if fit_for_best:
+    for i_b in range(4):
+        print 'Fit for band:', i_b
+        wvl_range = (min_wvl[i_b], max_wvl[i_b])
+        flux_offset_wvl_range = (min_wvl_offset[i_b], max_wvl_offset[i_b])
+        flx_galah, wvl_galah = get_spectra_subset(solar_galah, wvl_range)
+        flx_ref, wvl_ref = get_spectra_subset(solar_ref_conv, wvl_range)
+
+        flx_galah = spectra_normalize(wvl_galah-np.mean(wvl_galah), flx_galah, steps=st, sigma_low=sl, sigma_high=sh, order=ord, func='poly')
+        flx_ref = spectra_normalize(wvl_ref-np.mean(wvl_ref), flx_ref, steps=st, sigma_low=sl, sigma_high=sh, order=ord, func='poly')
+
+        idx_sim = np.logical_and(wvl_galah >= min_wvl_offset[i_b], wvl_galah <= max_wvl_offset[i_b])
+        idx_sim = np.logical_and(idx_sim, get_linelist_mask(wvl_galah, d_wvl=0.1))
+
+        params = Parameters()
+        params.add('off', value=0.01, min=-0.15, max=0.15, vary=True, brute_step=0.01)
+        params.add('amp', value=0.01, min=-0.15, max=0.15, vary=True, brute_step=0.01)
+
+        def tel_scale_func(params, eval=False):
+            flx_galah_new = get_spectrum_with_offset(flx_galah, wvl_galah, params['off'],
+                                                     params['amp'], flux_offset_wvl_range)
+            flx_diff = flx_ref - flx_galah_new
+            flx_diff_fit = spectra_normalize(wvl_galah - np.mean(wvl_galah), flx_diff,
+                                             steps=st, sigma_low=2., sigma_high=2., order=12, func='poly',
+                                             return_fit=True)
+            if eval:
+                return 1.
+            else:
+                # return np.abs(flx_diff - flx_diff_fit)[idx_sim]
+                return (flx_diff - flx_diff_fit)[idx_sim]**2
+                # return (np.abs(flx_diff)[idx_sim])
+
+        minner = Minimizer(tel_scale_func, params)
+        result = minner.minimize(method='brute')
+        res_param = result.params
+        # report_fit(result)
+
+        results_best = [[res_param['off'].value, res_param['amp'].value, flux_offset_wvl_range[0], flux_offset_wvl_range[1]]]
+        print results_best
+
+        # plot them
+        for res in results_best:
+            plot_p = str('b{:.0f}_o{:0.3f}_a{:0.3f}_lmfit.png'.format(i_b, res[0], res[1]))
+            flx_galah_new = get_spectrum_with_offset(flx_galah, wvl_galah, res[0], res[1], (res[2], res[3]))
+            flx_diff_fit = spectra_normalize(wvl_galah - np.mean(wvl_galah), flx_ref - flx_galah_new,
+                                             steps=st, sigma_low=2., sigma_high=2., order=12, func='poly', return_fit=True)
+            plot_spectra_with_difference(flx_ref, flx_galah_new, wvl_ref, x_range=wvl_range, linelist=galah_linelist,
+                                         title='', path=plot_p, diff_func=flx_diff_fit)
 
 if perform_analysis:
     for i_b in range(4):
@@ -84,8 +136,9 @@ if perform_analysis:
 
         results = []
         idx_sim = np.logical_and(wvl_galah >= min_wvl_offset[i_b], wvl_galah <= max_wvl_offset[i_b])
-        for flux_offset_amp in np.arange(0, 0.1, 0.01):
-            for flux_offset in np.arange(0, 0.1, 0.01):
+        idx_sim = np.logical_and(idx_sim, get_linelist_mask(wvl_galah, d_wvl=0.1))
+        for flux_offset_amp in np.arange(-0.15, 0.15, 0.01):
+            for flux_offset in np.arange(-0.15, 0.15, 0.01):
                 print flux_offset, flux_offset_amp
                 flx_galah_new = get_spectrum_with_offset(flx_galah, wvl_galah, flux_offset, flux_offset_amp, flux_offset_wvl_range)
                 flx_diff = flx_ref-flx_galah_new

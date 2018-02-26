@@ -15,11 +15,16 @@ from time import time
 from scipy.spatial.distance import *
 np.seterr(all='ignore')
 
+OK_LINES_ONLY = True
+USE_SUBSAMPLE = False
+
 min_wvl = np.array([4725, 5665, 6485, 7700])
 max_wvl = np.array([4895, 5865, 6725, 7875])
 
-every_nth_solar_pixel = np.array([4, 5, 6, 7])  # double sub-sampling of spectra
-# every_nth_solar_pixel = np.array([8, 10, 12, 14])  # almost original sampling of the data - GP works much faster with this
+if USE_SUBSAMPLE:
+    every_nth_solar_pixel = np.array([4, 5, 6, 7])  # double sub-sampling of spectra
+else:
+    every_nth_solar_pixel = np.array([8, 10, 12, 14])  # almost original sampling of the data - GP works much faster with this
 
 # input data
 if pc_name == 'gigli' or pc_name == 'klemen-P5K-E':
@@ -46,13 +51,13 @@ problematic_lines = ['Ti5689.46',
                      'Sc5724.107',
                      'Cr5787.919',
                      'Ba5853.668',
-                     #'Ti5866.4513',
-                     #'Ca5867.562',
+                     'Ti5866.4513',
+                     'Ca5867.562',
                      'Ni6482.7983',
                      'Ca6508.8496',
                      'Fe6516.0766',
                      'Fe6518.3657',
-                     #'Ni6532.873',
+                     'Ni6532.873',
                      'Ti6599.108'
                      ]  # TODO: might even add absorption lines in the beginning of the red arm - lines are too shallow there
 
@@ -68,13 +73,14 @@ norm_bad_ranges = [[4727.0, 4737.0],  # region without continuum
                    ]
 
 # filter read linelist
-remove_linelist_rows = list([])
-for i_l_r in range(len(galah_linelist)):
-    line = galah_linelist[i_l_r]
-    line_name = line['Element'] + str(line['line_centre'])
-    # if line_name in problematic_lines:
-    #     remove_linelist_rows.append(i_l_r)
-galah_linelist.remove_rows(remove_linelist_rows)
+if OK_LINES_ONLY:
+    remove_linelist_rows = list([])
+    for i_l_r in range(len(galah_linelist)):
+        line = galah_linelist[i_l_r]
+        line_name = line['Element'] + str(line['line_centre'])
+        if line_name in problematic_lines:
+            remove_linelist_rows.append(i_l_r)
+    galah_linelist.remove_rows(remove_linelist_rows)
 
 
 def get_solar_data(solar_input_dir, suffix, every_nth=1, bands_together=True):

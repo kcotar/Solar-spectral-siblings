@@ -29,9 +29,9 @@ d_wvl = 0.0
 save_plots = False
 
 # evaluate spectrum
-n_noise_samples = 500
+n_noise_samples = 750
 noise_power = 0
-test_spectrum_is_line = True
+test_spectrum_is_line = False
 
 # added noise and evaluation settings
 normalize_noisy_spectrum = False
@@ -58,12 +58,16 @@ if normalize_noisy_spectrum:
     new_dir += '_renorm'
 if test_spectrum_is_line:
     new_dir += '_spectrumisline'
+if OK_LINES_ONLY:
+    new_dir += '_oklinesonly'
+if not USE_SUBSAMPLE:
+    new_dir += '_origsamp'
 
 move_to_dir(out_dir + new_dir)
 
 observe_bands = list([1, 2, 3, 4])
 observe_snr = range(5, 170, 1)
-observe_flux = [0., 0.1]  # np.arange(0, 0.21, 0.02)  # float percents  0...1
+observe_flux = [0., 0.05, 0.1, 0.15, 0.2]  # np.arange(0, 0.21, 0.02)  # float percents  0...1
 
 for evaluate_band in observe_bands:
     print 'Evaluating band', evaluate_band, every_nth_solar_pixel[evaluate_band-1]

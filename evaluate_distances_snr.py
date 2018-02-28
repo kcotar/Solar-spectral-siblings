@@ -37,7 +37,7 @@ test_spectrum_is_line = False
 normalize_noisy_spectrum = False
 gauss_noise = True
 compute_guesslike_snr = True
-guesslike_all_lines = False
+guesslike_all_lines = True
 
 # reference solar spectra
 print 'Read reference GALAH Solar spectra'

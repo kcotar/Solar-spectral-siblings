@@ -38,7 +38,8 @@ solar_ref = pd.read_csv(solar_data_dir + 'solar_spectra.txt', header=None, delim
 solar_ref_conv = pd.read_csv(solar_data_dir + 'solar_spectra_conv.txt', header=None, delimiter=' ', na_values='nan').values
 
 # Galah spectrum
-twilight_spectrum_file = 'twilight_spectrum_galah_ext0_dateall.txt'
+galah_ext = 0
+twilight_spectrum_file = 'twilight_spectrum_galah_ext'+str(galah_ext)+'_dateall.txt'
 solar_galah = pd.read_csv(solar_data_dir + twilight_spectrum_file, header=None, delimiter=' ', na_values='nan').values
 
 # # convolve solar spectrum - different, modified and visually modified values
@@ -58,12 +59,24 @@ sh = 3.
 st = 15
 ord = 1
 
-min_wvl_offset = np.array([4715, 5665, 6485, 7700])
-max_wvl_offset = np.array([4890, 5865, 6725, 7875])
+min_wvl_offset = np.array([4715, 5665, 6485, 7760])
+max_wvl_offset = np.array([4890, 5865, 6725, 7840])
 
-perform_analysis = True
-final_output = False
-fit_for_best = True
+# offset analysis
+perform_analysis = False
+fit_for_best = False
+fit_on_all_pixels = True
+# final offset correction and output of spectra
+final_output = True
+
+
+# final values of offsets
+if galah_ext == 0 and final_output:
+    flux_offsets = [0.025, -0.023, -0.013, -0.000]
+    flux_offset_amps = [0.050, 0.053, 0.065, 0.017]
+if galah_ext == 4 and final_output:
+    flux_offsets = [-0.007, -0.019, -0.010, -0.004]
+    flux_offset_amps = [0.076, 0.021, 0.073, 0.011]
 
 
 def get_spectrum_with_offset(flx, wvl, offset, offset_amp, offset_wvl_range):
@@ -73,7 +86,7 @@ def get_spectrum_with_offset(flx, wvl, offset, offset_amp, offset_wvl_range):
                              sigma_high=sh, order=ord, func='poly')
 
 
-move_to_dir('Twilight_offset_determine_ext0_lmfit')
+move_to_dir('Twilight_offset_determine_ext'+str(galah_ext)+'')
 
 if fit_for_best:
     for i_b in range(4):
@@ -87,7 +100,9 @@ if fit_for_best:
         flx_ref = spectra_normalize(wvl_ref-np.mean(wvl_ref), flx_ref, steps=st, sigma_low=sl, sigma_high=sh, order=ord, func='poly')
 
         idx_sim = np.logical_and(wvl_galah >= min_wvl_offset[i_b], wvl_galah <= max_wvl_offset[i_b])
-        idx_sim = np.logical_and(idx_sim, get_linelist_mask(wvl_galah, d_wvl=0.1))
+        idx_sim = np.logical_and(idx_sim, flx_galah < 0.97)
+        if not fit_on_all_pixels:
+            idx_sim = np.logical_and(idx_sim, get_linelist_mask(wvl_galah, d_wvl=0.5))
 
         params = Parameters()
         params.add('off', value=0.01, min=-0.15, max=0.15, vary=True, brute_step=0.01)
@@ -103,12 +118,12 @@ if fit_for_best:
             if eval:
                 return 1.
             else:
-                # return np.abs(flx_diff - flx_diff_fit)[idx_sim]
-                return (flx_diff - flx_diff_fit)[idx_sim]**2
+                return np.abs(flx_diff - flx_diff_fit)[idx_sim]
+                # return (flx_diff - flx_diff_fit)[idx_sim]**2
                 # return (np.abs(flx_diff)[idx_sim])
 
         minner = Minimizer(tel_scale_func, params)
-        result = minner.minimize(method='brute')
+        result = minner.minimize()#method='brute')
         res_param = result.params
         # report_fit(result)
 
@@ -117,7 +132,7 @@ if fit_for_best:
 
         # plot them
         for res in results_best:
-            plot_p = str('b{:.0f}_o{:0.3f}_a{:0.3f}_lmfit.png'.format(i_b, res[0], res[1]))
+            plot_p = str('b{:.0f}_o{:0.3f}_a{:0.3f}_lmfit_allabs.png'.format(i_b, res[0], res[1]))
             flx_galah_new = get_spectrum_with_offset(flx_galah, wvl_galah, res[0], res[1], (res[2], res[3]))
             flx_diff_fit = spectra_normalize(wvl_galah - np.mean(wvl_galah), flx_ref - flx_galah_new,
                                              steps=st, sigma_low=2., sigma_high=2., order=12, func='poly', return_fit=True)
@@ -149,7 +164,7 @@ if perform_analysis:
         results = np.vstack(results)
         print 'Best for band', i_b
         idx_best = np.argsort(results[:, 4])
-        results_best = results[idx_best[:10], :]
+        results_best = results[idx_best[:5], :]
         print results_best
 
         # plot them
@@ -163,8 +178,6 @@ if perform_analysis:
 
 if final_output:
     # output new spectra as a csv format for later use
-    flux_offsets = [0.025, 0.0, 0.005, 0.005]
-    flux_offset_amps = [0.045, 0.035, 0.015, 0.0]
 
     wvl_galah = solar_galah[:, 0]
     flx_galah = solar_galah[:, 1]

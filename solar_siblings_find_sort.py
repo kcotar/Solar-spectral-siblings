@@ -42,7 +42,7 @@ snr_functions_dir = os.getcwd() + '/' + 'Distances_SNR_models_subsample_guesslik
 chdir('Distances_Step1_p0_SNRsamples0_ext4_oklinesonly_2')
 evaluate_bands = list([1, 2, 3, 4])
 plot_flux_offsets = [0., 0.1, 0.2]  # [0., 0.04, 0.08, 0.12, 0.16, 0.2]
-snr_multi = 1.  # np.sqrt(4.2)  # 2.3548
+snr_multi = 1.
 
 final_selected_objects = {}
 

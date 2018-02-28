@@ -4,7 +4,7 @@ pc_name = gethostname()
 if pc_name != 'gigli':
     import matplotlib
     matplotlib.use('Agg')
-import os, imp
+import imp
 from astropy.table import Table, join
 import matplotlib.pyplot as plt
 import george, emcee, corner
@@ -14,12 +14,23 @@ import numpy as np
 from time import time
 from scipy.spatial.distance import *
 np.seterr(all='ignore')
+from scipy.signal import correlate
+from lmfit.models import GaussianModel, VoigtModel
 
 OK_LINES_ONLY = True
-USE_SUBSAMPLE = False
+USE_SUBSAMPLE = True
+REF_SPECTRUM_PREPARE = False
 
-min_wvl = np.array([4725, 5665, 6485, 7700])
-max_wvl = np.array([4895, 5865, 6725, 7875])
+if REF_SPECTRUM_PREPARE:
+    # use for reference spectrum preparation
+    min_wvl = np.array([4705, 5640, 6470, 7680])
+    max_wvl = np.array([4915, 5885, 6750, 7900])
+else:
+    # use for normal processing and comparison
+    min_wvl = np.array([4725, 5665, 6485, 7700])
+    max_wvl = np.array([4895, 5865, 6725, 7875])
+
+rv_weights = np.array([0.75, 1., 1., 0.25])
 
 if USE_SUBSAMPLE:
     every_nth_solar_pixel = np.array([4, 5, 6, 7])  # double sub-sampling of spectra
@@ -407,3 +418,12 @@ def determine_norm_mask(in_wvl, ranges):
         if np.sum(idx_maskout) > 0:
             mask[idx_maskout] = False
     return mask
+
+
+def get_wvl_regions(ref_wvl, reduce_bands):
+    wvl_list_out = list([])
+    for i_r in range(len(reduce_bands)):
+        ccd = reduce_bands[i_r] - 1
+        idx_ref_sub = np.logical_and(ref_wvl >= min_wvl[ccd], ref_wvl <= max_wvl[ccd])
+        wvl_list_out.append(ref_wvl[idx_ref_sub])
+    return np.hstack(wvl_list_out)

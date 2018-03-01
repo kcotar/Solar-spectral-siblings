@@ -33,13 +33,13 @@ solar_input_dir = galah_data_input+'Solar_data_dr53/'
 solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix)
 
 # read Galah guess and/or cannon parameters
-galah_params = Table.read(galah_data_input+'sobject_iraf_53_reduced_20180214.fits')
+galah_params = Table.read(galah_data_input+'sobject_iraf_53_reduced_20180222.fits')
 
 # define directory with simulations of metrics SNR functions
 snr_functions_dir = os.getcwd() + '/' + 'Distances_SNR_models_subsample_guesslike-alllines_gauss_oklinesonly' + '/'
 
 # distance/similarity measurements
-chdir('Distances_Step1_p0_SNRsamples0_ext4_oklinesonly_2')
+chdir('Distances_Step1_p0_SNRsamples0_ext0_oklinesonly')
 evaluate_bands = list([1, 2, 3, 4])
 plot_flux_offsets = [0., 0.1, 0.2]  # [0., 0.04, 0.08, 0.12, 0.16, 0.2]
 snr_multi = 1.

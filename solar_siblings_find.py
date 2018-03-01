@@ -23,19 +23,19 @@ if len(argv) > 1:
             read_ext = np.int8(a)
 
 d_wvl = 0.0
-save_plots = False
+save_plots = True
 output_differences = True  # so far available only for the first analysis step
 min_wvl = min_wvl[process_bands-1]
 max_wvl = max_wvl[process_bands-1]
 
-GP_compute = False
+GP_compute = True
 save_gp_params = True
-n_threads = 20
+n_threads = 25
 n_walkers = np.array([2*n_threads, 2*n_threads, 2*n_threads, 2*n_threads])[process_bands-1]
-n_steps = np.array([40, 40, 40, 40])[process_bands-1]
+n_steps = np.array([30, 30, 30, 30])[process_bands-1]
 
 # evaluate spectrum
-n_noise_samples = 0
+n_noise_samples = 500
 noise_power = 0
 
 # reference solar spectra
@@ -45,7 +45,7 @@ solar_input_dir = galah_data_input+'Solar_data_dr53/'
 # solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix, every_nth=8)
 
 # data-table settings
-data_date = '20180214'
+data_date = '20180222'
 galah_param_file = 'sobject_iraf_53_reduced_'+data_date+'.fits'
 cannon_param_file = 'sobject_iraf_iDR2_180108_cannon.fits'
 
@@ -75,14 +75,15 @@ feh_solar_std_c = np.nanstd(cannon_param[idx_row_cannon]['Feh_cannon'])
 print 'Solar parameters - cannon:', teff_solar_c, '+/-', teff_solar_std_c, ',  ', logg_solar_c, '+/-', logg_solar_std_c, ',  ', feh_solar_c, '+/-', feh_solar_std_c
 
 # manual parameter selection
-idx_solar_like = (np.abs(cannon_param['Teff_cannon'] - teff_solar_c) < 200) & \
-                 (np.abs(cannon_param['Logg_cannon'] - logg_solar_c) < 0.3) & \
-                 (np.abs(cannon_param['Feh_cannon'] - feh_solar_c) < 0.25)
-#
-idx_solar_like = np.logical_and(idx_solar_like, cannon_param['red_flag'] == 0)
+idx_solar_like = (np.abs(cannon_param['Teff_cannon'] - teff_solar_c) <= 200) & \
+                 (np.abs(cannon_param['Logg_cannon'] - logg_solar_c) <= 0.3) & \
+                 (np.abs(cannon_param['Feh_cannon'] - feh_solar_c) <= 0.3)
+# preform flag filtering if needed - later selection is currentlly implemented
+idx_solar_like = np.logical_and(idx_solar_like, cannon_param['flag_cannon'] >= 0)  # no flagging at this point
+idx_solar_like = np.logical_and(idx_solar_like, np.bitwise_and(cannon_param['red_flag'], 64) == 0)  # only flats are taken out
 # snr selection
-idx_solar_like = np.logical_and(idx_solar_like, cannon_param['snr_c2_guess'] > 0)
-idx_solar_like = np.logical_and(idx_solar_like, cannon_param['sobject_id'] > 140301000000000)
+idx_solar_like = np.logical_and(idx_solar_like, cannon_param['snr_c2_guess'] >= 0)  # no snr limits
+idx_solar_like = np.logical_and(idx_solar_like, cannon_param['sobject_id'] > 140301000000000)  # leave out comissoning phase
 
 n_solar_like = np.sum(idx_solar_like)
 print 'Solar like by parameters:', n_solar_like
@@ -98,8 +99,8 @@ if GP_compute:
     sim_metrices_min = [m+'_min' for m in sim_metrices]
     sim_metrices_max = [m+'_max' for m in sim_metrices]
     sim_dtypes = ['float64' for i in range(4*len(sim_metrices))]
-    sim_results = Table(names=np.hstack(('sobject_id', 'snr_spectrum', 'median_cont', sim_metrices, sim_metrices_std, sim_metrices_min, sim_metrices_max)),
-                        dtype=(np.hstack(('int64', 'float64', 'float64', sim_dtypes))))
+    sim_results = Table(names=np.hstack(('sobject_id', 'snr_spectrum', 'median_cont', 'median_cont_after', sim_metrices, sim_metrices_std, sim_metrices_min, sim_metrices_max)),
+                        dtype=(np.hstack(('int64', 'float64', 'float64', 'float64', sim_dtypes))))
 else:
     sim_dtypes = ['float64' for i in range(2*len(sim_metrices))]
     sim_results = Table(names=np.hstack(('sobject_id', 'snr_spectrum', 'median_cont', sim_metrices, sim_metrices_std)),
@@ -116,8 +117,15 @@ if not USE_SUBSAMPLE:
 # TEMP suffix only:
 dir_suffix += ''
 if GP_compute:
-    txt_out = 'GP_fit_res.txt'
     move_to_dir(out_dir + 'Distances_Step2' + dir_suffix)
+    gp_param_labels = ['amp_noise', 'rad_noise', 'amp_cont', 'rad_cont', 'amp_off', 'cont_norm']
+    txt_out_gp = 'GP_fit_res.txt'
+    txt = open(txt_out_gp, 'w')
+    txt_out_header_str = 'sobject_id'
+    for i_p_b in process_bands:
+        txt_out_header_str += ',' + ','.join([p_l+'_b'+str(i_p_b) for p_l in gp_param_labels])
+    txt.write(txt_out_header_str + '\n')
+    txt.close()
 else:
     move_to_dir(out_dir + 'Distances_Step1' + dir_suffix)
 
@@ -125,9 +133,9 @@ file_out_fits = 'solar_similarity'+bands_suffix+'.fits'
 file_out_diff = 'solar_spectral_diff'+bands_suffix+'.csv'
 
 # predetermined objects
-# solar_like_sobjects = [
-# 140312003501087,140312004501092,140413003201328,140611004001251,140711002401243,140711002401316,140713004001112,140713004001188,140805002601115,140805003101303,140805003101338,140806002301392,140806002901279,140806004101159,140807005001277,140808002701299,140808003701261,140809003101322,140809003701146,141102002401182,141102002701267,141103003101379,141231003001209,150102003201119,150103002701017,150103003001048,150204002901346,150207002101161,150208003201286,150211004701179,150408004101278,150408005301184,150409003101129,150409004101294,150427004301259,150427004801275,150504003001111,150602003301072,150602003901271,150607005601279,150703005101366,150703005601062,150703005601082,150705005401363,150705005401364,150705005401377,150705006401129,150705006401314,150827005201080,150828003701040,150828003701062,150828004201034,150828004201212,150828004701096,150828005701069,150829002601283,150829003101225,150830004001040,150830004601175,150830005101144,150830005101337,150830005101391,151009001601351,151009001601363,151109002101254,151110003101178,151111002101236,151219001601078,151219002601248,151219003601245,151219003601298,151225002701158,151225003801118,151230003201236,151231002601074,160110003601039,160112001601056,160123002601062,160123002601079,160125004501038,160125004501256,160125004501389,160130005201357,160130006301234,160325003201071,160326002101077,160327004101056,160327004101248,160327004101343,160327004601337,160327006101355,160328003201282,160330002601095,160402004601106,160402005101147,160402005601084,160402006101388,160403005201158,160422004501162,160424002101194,160424003101290,160424004701369,160426004501264,160426006101338,160426006701393,160513001601022,160522006101314,160522006601193,160524004901098,160524005501270,160524006101090,160524006601258,160525003201154,160530005001359,160531001601307,160531004601362,160531005601362,160531006101153,161008003001092,161009002601018,161009004801144,161011003401169,161104002801361,161104003801323,161105003101019,161105003101345,161105004601015,161107001601132,161107001601133,161116002201296,161116003801308,161118002601176,161118004701023,161118004701221,161119004701207,161210004201073,161210004201315,161213004101187,161217002601138,161217004101075,161217004601271,161219003101122,161219004101351,161219005101191,161219005101228,170102001901072,170105003101138,170108003301041,170108004601041,170109002101106,170109002801065,170112002101294,170112002601348,170112003101027,170112003601298,170114004101329,170115001601273,170115002201381,170119002601393,170121002801292,170130003101184,170130003601019,170219003601351,170220004101215,170508004801312,170509004701096,170509005201063,170510007301226,170514003001180,170514003301001,170514003301011,170515003101035,170515003101036,170515006101289,170614004101220,170614004101381,170614004601055,170614004601061,170614005101328,170710003201082,170710003201145,170711002001243,170711005101185,170711005801034,170713005101388,170723003601118,170723005101385,170724003601147,170724004601055,170801002801345,170801004001010,170801004001215,170805003601318,170829001901039,170905002601072,170905003101147,170906003601147,170906003601159,170906003601210,170906004101067,170908001601149,170909002101136,170909002601291,170910001801313,170910003101074,170910003101081,170910005101082,170911002101145,170911004201366
-# ]
+solar_like_sobjects = [
+140312003501087,140312004501092,140413003201328,140611004001251,140711002401243,140711002401316,140713004001112,140713004001188,140805002601115,140805003101303,140805003101338,140806002301392,140806002901279,140806004101159,140807005001277,140808002701299,140808003701261,140809003101322,140809003701146,141102002401182,141102002701267,141103003101379,141231003001209,150102003201119,150103002701017,150103003001048,150204002901346,150207002101161,150208003201286,150211004701179,150408004101278,150408005301184,150409003101129,150409004101294,150427004301259,150427004801275,150504003001111,150602003301072,150602003901271,150607005601279,150703005101366,150703005601062,150703005601082,150705005401363,150705005401364,150705005401377,150705006401129,150705006401314,150827005201080,150828003701040,150828003701062,150828004201034,150828004201212,150828004701096,150828005701069,150829002601283,150829003101225,150830004001040,150830004601175,150830005101144,150830005101337,150830005101391,151009001601351,151009001601363,151109002101254,151110003101178,151111002101236,151219001601078,151219002601248,151219003601245,151219003601298,151225002701158,151225003801118,151230003201236,151231002601074,160110003601039,160112001601056,160123002601062,160123002601079,160125004501038,160125004501256,160125004501389,160130005201357,160130006301234,160325003201071,160326002101077,160327004101056,160327004101248,160327004101343,160327004601337,160327006101355,160328003201282,160330002601095,160402004601106,160402005101147,160402005601084,160402006101388,160403005201158,160422004501162,160424002101194,160424003101290,160424004701369,160426004501264,160426006101338,160426006701393,160513001601022,160522006101314,160522006601193,160524004901098,160524005501270,160524006101090,160524006601258,160525003201154,160530005001359,160531001601307,160531004601362,160531005601362,160531006101153,161008003001092,161009002601018,161009004801144,161011003401169,161104002801361,161104003801323,161105003101019,161105003101345,161105004601015,161107001601132,161107001601133,161116002201296,161116003801308,161118002601176,161118004701023,161118004701221,161119004701207,161210004201073,161210004201315,161213004101187,161217002601138,161217004101075,161217004601271,161219003101122,161219004101351,161219005101191,161219005101228,170102001901072,170105003101138,170108003301041,170108004601041,170109002101106,170109002801065,170112002101294,170112002601348,170112003101027,170112003601298,170114004101329,170115001601273,170115002201381,170119002601393,170121002801292,170130003101184,170130003601019,170219003601351,170220004101215,170508004801312,170509004701096,170509005201063,170510007301226,170514003001180,170514003301001,170514003301011,170515003101035,170515003101036,170515006101289,170614004101220,170614004101381,170614004601055,170614004601061,170614005101328,170710003201082,170710003201145,170711002001243,170711005101185,170711005801034,170713005101388,170723003601118,170723005101385,170724003601147,170724004601055,170801002801345,170801004001010,170801004001215,170805003601318,170829001901039,170905002601072,170905003101147,170906003601147,170906003601159,170906003601210,170906004101067,170908001601149,170909002101136,170909002601291,170910001801313,170910003101074,170910003101081,170910005101082,170911002101145,170911004201366
+]
 # print 'Number of pre-selected objects:', len(solar_like_sobjects)
 
 # random subset objects from parameters selection
@@ -184,8 +192,9 @@ for s_obj in solar_like_sobjects:
     # print 'SNRs:', galah_object['snr_c' + str(i_c + 1) + '_guess'].data[0], snr_guesslike
 
     # determine continuum-like pixels
+    min_cont_level = 0.98
     solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix_solar_ref, every_nth=4)
-    idx_cont_px = solar_flx > 0.98
+    idx_cont_px = solar_flx > min_cont_level
     flx_all_abs_res = spectra_resample(flx_all_abs, wvl_all_abs, solar_wvl, k=1)
     idx_cont_px = np.logical_and(idx_cont_px, np.isfinite(flx_all_abs_res))
     cont_median_solar = np.nanmedian(solar_flx[idx_cont_px])
@@ -194,6 +203,7 @@ for s_obj in solar_like_sobjects:
 
     pix_ref = list([])
     pix_ref_noise = list([])
+    pix_ref_cont = list([])  # continuum pixels for continuum offset determination
     pix_spec = list([])
     pix_std = list([])
     if GP_compute:
@@ -227,18 +237,21 @@ for s_obj in solar_like_sobjects:
             # determine kernel parameters trough emcee fit
             print ' Running emcee'
             # emcee_fit_px = 100
-            sampler, fit_res, fit_prob = fit_gp_kernel([diff_var/2., 0.0025, 1e-5, 15],
-                                                       diff, solar_wvl[idx_ref], data_std=None,  # data_std=flux_std_b_res,
+            sampler, fit_res, fit_prob = fit_gp_kernel([diff_var/2., 0.0025, 1e-5, 15, 0.05, 1.],
+                                                       solar_flx[idx_ref], flux_b_res, solar_wvl[idx_ref],
+                                                       data_std=None,
+                                                       # data_std=flux_std_b_res,
                                                        nwalkers=n_walkers[i_c], n_threds=n_threads, n_burn=n_steps[i_c],
-                                                       exit_lnp=10)
-
+                                                       exit_lnp=10, normal_dist_guess=False)
             # walker prob plot
             if save_plots:
                 print(" Plotting walker probabilities")
                 walkers_prob = sampler.lnprobability/len(flux_b_res)
                 for i_w in range(walkers_prob.shape[0]):
                     plt.plot(walkers_prob[i_w, :])
-                plt.ylim((np.nanpercentile(walkers_prob, 1), np.nanpercentile(walkers_prob, 99)))
+                walkers_prob = walkers_prob.flatten()                   # without this correction numpy
+                walkers_prob = walkers_prob[np.isfinite(walkers_prob)]  # percentile may return incorrect -inf value
+                plt.ylim((np.percentile(walkers_prob, 1), np.percentile(walkers_prob, 99)))
                 plt.savefig(str(s_obj) + '_gp-lnprob_b' + str(i_c + 1) + '.png', dpi=400)
                 # plt.show()
                 plt.close()
@@ -250,7 +263,7 @@ for s_obj in solar_like_sobjects:
             # corner plot of parameters
             if save_plots:
                 c_fig = corner.corner(sampler.flatchain, truths=kernel_fit, quantiles=[0.16, 0.5, 0.84],
-                                      labels=['amp_noise', 'rad_noise', 'amp_cont', 'rad_cont'], bins=30)
+                                      labels=gp_param_labels, bins=30)
 
                 # # add something to the plots on diagonal of corner plot
                 # # extract the axes
@@ -261,13 +274,14 @@ for s_obj in solar_like_sobjects:
                 #     ax = axes[i, i]
                 #     ax.plot()
 
-                c_fig.savefig(str(s_obj)+'_corner_b'+str(i_c+1)+'.png', dpi=400)
+                c_fig.savefig(str(s_obj)+'_corner_b'+str(i_c+1)+'.png', dpi=200)
                 plt.close(c_fig)
 
             # create a gaussian process that will be used for the whole spectra
-            gp = george.GP(get_kernel(kernel_fit))
+            gp = george.GP(get_kernel(kernel_fit[:-2]))
             gp.compute(solar_wvl[idx_ref])
             gp_noise_pred = gp.sample(size=n_noise_samples)
+            gp_noise_pred += spectrum_offset_norm(kernel_fit[-2:], solar_flx[idx_ref]) - solar_flx[idx_ref]
 
             if save_plots:
                 plt.plot(solar_flx[idx_ref], c='red', lw=0.5)
@@ -276,17 +290,24 @@ for s_obj in solar_like_sobjects:
                 plt.plot(flux_b_res, c='blue', lw=0.5)
                 plt.ylim((0.4, 1.1))
                 # plt.show()
-                plt.savefig(str(s_obj)+'_gp_b'+str(i_c+1)+'.png', dpi=550)
+                plt.savefig(str(s_obj)+'_gp_b'+str(i_c+1)+'.png', dpi=500)
                 plt.close()
 
+            # determine continuum-like pixels after GP fitting was performed
+            pix_ref_cont.append((solar_flx[idx_ref] + gp_noise_pred)[:, np.where(solar_flx[idx_ref] > min_cont_level)[0]])
+
+            # store results for current band
             pix_ref.append(solar_flx[idx_ref][abs_lines_cols])
             pix_ref_noise.append(gp_noise_pred[:, abs_lines_cols])
             pix_spec.append(flux_b_res[abs_lines_cols])
             pix_std.append(flux_std_b_res[abs_lines_cols])
 
+        # determine continuum median difference after GP fitting was performed
+        cont_median_dif_after = np.median(pix_ref_cont) - cont_median_flx
+
         # save fit res
         if save_gp_params:
-            txt = open(txt_out, 'a')
+            txt = open(txt_out_gp, 'a')
             gp_res_string = str(s_obj) + ',' + ','.join([str(v) for v in np.array(gp_final_res).flatten()])
             txt.write(gp_res_string + '\n')
             txt.close()
@@ -319,7 +340,7 @@ for s_obj in solar_like_sobjects:
                 snr_noise_pred = np.random.poisson((1.0 / snr_sigma)**2, size=(n_noise_samples, len(flux_b_res)))
                 snr_noise_pred = snr_noise_pred / ((1.0 / snr_sigma)**2) - 1.
 
-            # generate noise to observed spectrum based on given snr value of the spectrum
+            # store results for current band
             pix_ref.append(solar_flx[idx_ref][abs_lines_cols])
             pix_spec.append(flux_b_res[abs_lines_cols])
             pix_std.append(flux_std_b_res[abs_lines_cols])
@@ -346,7 +367,7 @@ for s_obj in solar_like_sobjects:
         spectrum_distances[i_snr, :] = compute_distances(pix_spec, pix_std, pix_ref_noise[i_snr, :] + pix_ref, d=noise_power)
         if save_plots:
             axSpectra.plot(pix_ref_noise[i_snr, :] + pix_ref, lw=0.2, alpha=0.01, c='blue')
-        if output_differences:
+        if output_differences and not GP_compute:
             csv_diff = open(file_out_diff, 'a')
             if os.path.getsize(file_out_diff) == 0:  # size of file is zero -> add wavelength header info
                 csv_diff.write('0,'+','.join([str(sw) for sw in solar_wvl[idx_ref][abs_lines_cols]])+'\n')
@@ -356,11 +377,11 @@ for s_obj in solar_like_sobjects:
 
     # add agregated results to final table
     if GP_compute:
-        sim_results.add_row(np.hstack([s_obj, snr_guesslike, cont_median_dif, np.nanmean(spectrum_distances, axis=0), 
-				np.nanstd(spectrum_distances, axis=0), np.nanmin(spectrum_distances, axis=0), np.nanmax(spectrum_distances, axis=0)]))
+        sim_results.add_row(np.hstack([s_obj, snr_guesslike, cont_median_dif, cont_median_dif_after, np.nanmean(spectrum_distances, axis=0),
+                            np.nanstd(spectrum_distances, axis=0), np.nanmin(spectrum_distances, axis=0), np.nanmax(spectrum_distances, axis=0)]))
     else:
         sim_results.add_row(np.hstack([s_obj, snr_guesslike, cont_median_dif, np.nanmean(spectrum_distances, axis=0), 
-				np.nanstd(spectrum_distances, axis=0)]))
+                            np.nanstd(spectrum_distances, axis=0)]))
 
     if save_plots:
         axSpectra.plot(pix_ref, c='black', lw=0.5)

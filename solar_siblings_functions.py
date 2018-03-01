@@ -9,6 +9,7 @@ from astropy.table import Table, join
 import matplotlib.pyplot as plt
 import george, emcee, corner
 from george import kernels
+from george.modeling import Model
 import pandas as pd
 import numpy as np
 from time import time
@@ -18,7 +19,7 @@ from scipy.signal import correlate
 from lmfit.models import GaussianModel, VoigtModel
 
 OK_LINES_ONLY = True
-USE_SUBSAMPLE = True
+USE_SUBSAMPLE = False
 REF_SPECTRUM_PREPARE = False
 
 if REF_SPECTRUM_PREPARE:
@@ -125,7 +126,7 @@ def get_band_mask(wvl_values, evaluate_band):
 
 
 def kernel_params_ok(p):
-    amp, rad, amp2, rad2 = p
+    amp, rad, amp2, rad2, amp_off, cont_norm = p
     if not 1e-9 < amp < 1e-2:
         return False
     if not 1e-8 < rad < 0.05:
@@ -133,6 +134,10 @@ def kernel_params_ok(p):
     if not 1e-9 < amp2 < 1e-3:
         return False
     if not 0.1 < rad2 < 40:
+        return False
+    if not -0.2 < amp_off < 0.2:
+        return False
+    if not 0.8 < cont_norm < 1.2:
         return False
     return True
 
@@ -145,6 +150,13 @@ def kernel_cont(amp, rad):
     return amp * kernels.Matern52Kernel(rad)
 
 
+def spectrum_offset_norm(params, f):
+    amp_off, cont_norm = params
+    f_new = f + (1. - f) * amp_off
+    f_new /= cont_norm
+    return f_new
+
+
 def get_kernel(p, add_cont=True):
     amp, rad, amp2, rad2 = p
     kernel = kernel_noise(amp, rad)
@@ -153,33 +165,55 @@ def get_kernel(p, add_cont=True):
     return kernel
 
 
-def lnprob_gp(params, data, wvl, data_std):
+def lnprob_gp(params, f_ref, f_obs, wvl, data_std, spectrum_off_norm=True):
     # evaluate selected parameters
     if kernel_params_ok(params):
-        gp = george.GP(get_kernel(params))
+        gp = george.GP(get_kernel(params[:-2]))
         if data_std is not None:
             gp.compute(wvl, data_std)
         else:
             gp.compute(wvl)
-        return gp.lnlikelihood(data, wvl)
+        # draw a sample noise from kernel distribution - not needed
+        # gp_noise = gp.sample(size=1)
+        # normalization and abs lines amplitude fitting
+        if spectrum_off_norm:
+            f_ref_new = spectrum_offset_norm(params[-2:], f_ref)
+            return gp.lnlikelihood(f_ref_new - f_obs, wvl)
+        else:
+            return gp.lnlikelihood(f_ref - f_obs, wvl)
     else:
         return -np.inf
 
 
-def fit_gp_kernel(init_guess, data, wvl, nwalkers=32, n_threds=1, n_burn=75, data_std=None,
-                  n_per_burn=10, exit_lnp=1.5):
+def fit_gp_kernel(init_guess, ref_data, obs_data, wvl, nwalkers=32, n_threds=1, n_burn=75, data_std=None,
+                  n_per_burn=10, exit_lnp=1.5, normal_dist_guess=True):
+    # compute number of burn steps
     n_burn_steps = np.int32(n_burn/n_per_burn)
+    # data to be fitted handling
     ndim = len(init_guess)
+    data_diff = ref_data - obs_data
 
     given_guess = np.array(init_guess)
     # add random amount of noise to the data
-    # p0 = [given_guess + 1e-4 * np.random.randn(ndim) for i_w in range(nwalkers)]
-    # multiply by the random amount of noise and add to the data - better for parameters of unequal values
-    perc_rand = 25.
-    p0 = [given_guess + given_guess * np.random.randn(ndim) * perc_rand/100. for i_w in range(nwalkers)]  #
+    if normal_dist_guess:
+        # standard normal distribution of initial values
+        perc_rand = 25.
+        p0 = [given_guess + given_guess * np.random.randn(ndim) * perc_rand/100. for i_w in range(nwalkers)]
+    else:
+        # uniform distribution of initial values
+        perc_rand = 100.
+        p0 = list([])
+        for i_w in range(nwalkers):
+            guess_max_offset = given_guess * perc_rand/100.
+            p0_new = given_guess + guess_max_offset * np.random.rand(ndim) - guess_max_offset / 2.
+            # correction for spectrum amp and offset levels
+            p0_new[-2] = 0. + np.random.rand(1) * 0.2 - 0.1
+            p0_new[-1] = 1. + np.random.rand(1) * 0.2 - 0.1
+            p0.append(p0_new)
+
 
     # initialize emcee sampler
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob_gp, threads=n_threds, args=(data, wvl, data_std))
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob_gp, threads=n_threds, args=(ref_data, obs_data, wvl, data_std))
 
     print(' Running burn-in')
     time_1 = time()
@@ -190,7 +224,7 @@ def fit_gp_kernel(init_guess, data, wvl, nwalkers=32, n_threds=1, n_burn=75, dat
         else:
             p0, lnp, _ = sampler.run_mcmc(None, n_per_burn)
         # test exit conditions
-        if (lnp/len(data) > exit_lnp).all():
+        if (lnp/len(data_diff) > exit_lnp).all():
             break
 
     time_2 = time()

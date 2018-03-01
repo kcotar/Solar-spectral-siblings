@@ -5,10 +5,10 @@ suffix_solar_ref = '_ext0_dateall_offset'
 solar_input_dir = galah_data_input+'Solar_data_dr53/'
 
 # read Galah guess and/or cannon parameters
-galah_params = Table.read(galah_data_input+'sobject_iraf_53_reduced_20180214.fits')
+galah_params = Table.read(galah_data_input+'sobject_iraf_53_reduced_20180222.fits')
 
 # distance/similarity measurements
-chdir('Distances_Step1_p0_SNRsamples0_ext4_oklinesonly_2')
+chdir('Distances_Step1_p0_SNRsamples0_ext0_oklinesonly')
 evaluate_bands = list([1,2,3,4])
 
 final_selected_objects = {}

@@ -8,7 +8,7 @@ solar_input_dir = galah_data_input+'Solar_data_dr53/'
 galah_params = Table.read(galah_data_input+'sobject_iraf_53_reduced_20180222.fits')
 
 # distance/similarity measurements
-chdir('Distances_Step1_p0_SNRsamples0_ext0_oklinesonly')
+chdir('Distances_Step1_p0_SNRsamples0_ext0_oklinesonly_const-25-normsigma-5-chebpoly')
 evaluate_bands = list([1,2,3,4])
 
 final_selected_objects = {}

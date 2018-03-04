@@ -1,5 +1,6 @@
 from solar_siblings_functions import *
 import sys, getopt
+from os.path import isfile
 
 # -----------------------------------
 # --------- Settings ----------------
@@ -30,9 +31,10 @@ max_wvl = max_wvl[process_bands-1]
 
 GP_compute = True
 save_gp_params = True
-n_threads = 25
+save_gp_params_read_append = True
+n_threads = 30
 n_walkers = np.array([2*n_threads, 2*n_threads, 2*n_threads, 2*n_threads])[process_bands-1]
-n_steps = np.array([30, 30, 30, 30])[process_bands-1]
+n_steps = np.array([50, 50, 50, 50])[process_bands-1]
 
 # evaluate spectrum
 n_noise_samples = 500
@@ -120,12 +122,14 @@ if GP_compute:
     move_to_dir(out_dir + 'Distances_Step2' + dir_suffix)
     gp_param_labels = ['amp_noise', 'rad_noise', 'amp_cont', 'rad_cont', 'amp_off', 'cont_norm']
     txt_out_gp = 'GP_fit_res.txt'
-    txt = open(txt_out_gp, 'w')
-    txt_out_header_str = 'sobject_id'
-    for i_p_b in process_bands:
-        txt_out_header_str += ',' + ','.join([p_l+'_b'+str(i_p_b) for p_l in gp_param_labels])
-    txt.write(txt_out_header_str + '\n')
-    txt.close()
+    if isfile(txt_out_gp) and not save_gp_params_read_append:
+        # do not rewrite original file
+        txt = open(txt_out_gp, 'w')
+        txt_out_header_str = 'sobject_id'
+        for i_p_b in process_bands:
+            txt_out_header_str += ',' + ','.join([p_l+'_b'+str(i_p_b) for p_l in gp_param_labels])
+        txt.write(txt_out_header_str + '\n')
+        txt.close()
 else:
     move_to_dir(out_dir + 'Distances_Step1' + dir_suffix)
 
@@ -234,48 +238,53 @@ for s_obj in solar_like_sobjects:
             diff = (solar_flx[idx_ref] - flux_b_res)
             diff_var = np.nanvar(diff)
 
-            # determine kernel parameters trough emcee fit
-            print ' Running emcee'
-            # emcee_fit_px = 100
-            sampler, fit_res, fit_prob = fit_gp_kernel([diff_var/2., 0.0025, 1e-5, 15, 0.05, 1.],
-                                                       solar_flx[idx_ref], flux_b_res, solar_wvl[idx_ref],
-                                                       data_std=None,
-                                                       # data_std=flux_std_b_res,
-                                                       nwalkers=n_walkers[i_c], n_threds=n_threads, n_burn=n_steps[i_c],
-                                                       exit_lnp=10, normal_dist_guess=False)
-            # walker prob plot
-            if save_plots:
-                print(" Plotting walker probabilities")
-                walkers_prob = sampler.lnprobability/len(flux_b_res)
-                for i_w in range(walkers_prob.shape[0]):
-                    plt.plot(walkers_prob[i_w, :])
-                walkers_prob = walkers_prob.flatten()                   # without this correction numpy
-                walkers_prob = walkers_prob[np.isfinite(walkers_prob)]  # percentile may return incorrect -inf value
-                plt.ylim((np.percentile(walkers_prob, 1), np.percentile(walkers_prob, 99)))
-                plt.savefig(str(s_obj) + '_gp-lnprob_b' + str(i_c + 1) + '.png', dpi=400)
-                # plt.show()
-                plt.close()
+            skip_gp_computation = False
+            # check if GP results are already available:
+            if isfile(txt_out_gp) and save_gp_params_read_append:
+                gp_precom_fit = Table.read(txt_out_gp)
+                idx_line = np.where(gp_precom_fit['sobject_id'] == s_obj)[0]
+                if len(idx_line) == 1:
+                    # we found a match, read it for current band
+                    skip_gp_computation = True
+                    gp_res_read_cols = [gp_p_l + '_b' + str(evaluate_band) for gp_p_l in gp_param_labels]
+                    kernel_fit = list(gp_precom_fit[idx_line][gp_res_read_cols])
+                    print ' GP emcee parameters restored'
 
-            sampler_chain_vals = sampler.flatchain
-            kernel_fit = np.median(sampler_chain_vals, axis=0)  # flatchain holds parameters of all emcee steps
+            if not skip_gp_computation:
+                # determine kernel parameters trough emcee fit
+                print ' Running emcee'
+                # emcee_fit_px = 100
+                sampler, fit_res, fit_prob = fit_gp_kernel([diff_var/2., 0.0025, 1e-5, 15, 0.05, 1.],
+                                                           solar_flx[idx_ref], flux_b_res, solar_wvl[idx_ref],
+                                                           data_std=None,
+                                                           # data_std=flux_std_b_res,
+                                                           nwalkers=n_walkers[i_c], n_threds=n_threads, n_burn=n_steps[i_c],
+                                                           exit_lnp=10, normal_dist_guess=False)
+                # walker prob plot
+                if save_plots:
+                    print(" Plotting walker probabilities")
+                    walkers_prob = sampler.lnprobability/len(flux_b_res)
+                    for i_w in range(walkers_prob.shape[0]):
+                        plt.plot(walkers_prob[i_w, :])
+                    walkers_prob = walkers_prob.flatten()                   # without this correction numpy
+                    walkers_prob = walkers_prob[np.isfinite(walkers_prob)]  # percentile may return incorrect -inf value
+                    plt.ylim((np.percentile(walkers_prob, 1), np.percentile(walkers_prob, 99)))
+                    plt.savefig(str(s_obj) + '_gp-lnprob_b' + str(i_c + 1) + '.png', dpi=400)
+                    # plt.show()
+                    plt.close()
+
+                # corner plot of parameters
+                if save_plots:
+                    c_fig = corner.corner(sampler.flatchain, truths=kernel_fit, quantiles=[0.16, 0.5, 0.84],
+                                          labels=gp_param_labels, bins=30)
+                    c_fig.savefig(str(s_obj) + '_corner_b' + str(i_c + 1) + '.png', dpi=200)
+                    plt.close(c_fig)
+
+                sampler_chain_vals = sampler.flatchain
+                kernel_fit = np.median(sampler_chain_vals, axis=0)  # flatchain holds parameters of all emcee steps
+
+            # add fitted values to the resulting table
             gp_final_res.append(kernel_fit)
-
-            # corner plot of parameters
-            if save_plots:
-                c_fig = corner.corner(sampler.flatchain, truths=kernel_fit, quantiles=[0.16, 0.5, 0.84],
-                                      labels=gp_param_labels, bins=30)
-
-                # # add something to the plots on diagonal of corner plot
-                # # extract the axes
-                # n_dim_plot = len(kernel_fit)
-                # axes = np.array(c_fig.axes).reshape((n_dim_plot,n_dim_plot))
-                # # loop over the axes of plots on diagonal
-                # for i in range(n_dim_plot):
-                #     ax = axes[i, i]
-                #     ax.plot()
-
-                c_fig.savefig(str(s_obj)+'_corner_b'+str(i_c+1)+'.png', dpi=200)
-                plt.close(c_fig)
 
             # create a gaussian process that will be used for the whole spectra
             gp = george.GP(get_kernel(kernel_fit[:-2]))
@@ -303,10 +312,10 @@ for s_obj in solar_like_sobjects:
             pix_std.append(flux_std_b_res[abs_lines_cols])
 
         # determine continuum median difference after GP fitting was performed
-        cont_median_dif_after = np.median(pix_ref_cont) - cont_median_flx
+        cont_median_dif_after = np.median(np.hstack(pix_ref_cont)) - cont_median_flx
 
-        # save fit res
-        if save_gp_params:
+        # save fit res if they are not already in it
+        if save_gp_params and not skip_gp_computation:
             txt = open(txt_out_gp, 'a')
             gp_res_string = str(s_obj) + ',' + ','.join([str(v) for v in np.array(gp_final_res).flatten()])
             txt.write(gp_res_string + '\n')

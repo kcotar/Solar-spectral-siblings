@@ -150,10 +150,13 @@ def kernel_cont(amp, rad):
     return amp * kernels.Matern52Kernel(rad)
 
 
-def spectrum_offset_norm(params, f):
+def spectrum_offset_norm(params, f, norm_only=False):
     amp_off, cont_norm = params
-    f_new = f + (1. - f) * amp_off
-    f_new /= cont_norm
+    if norm_only:
+        f_new = f / cont_norm
+    else:
+        f_new = f + (1. - f) * amp_off
+        f_new /= cont_norm
     return f_new
 
 
@@ -207,10 +210,9 @@ def fit_gp_kernel(init_guess, ref_data, obs_data, wvl, nwalkers=32, n_threds=1, 
             guess_max_offset = given_guess * perc_rand/100.
             p0_new = given_guess + guess_max_offset * np.random.rand(ndim) - guess_max_offset / 2.
             # correction for spectrum amp and offset levels
-            p0_new[-2] = 0. + np.random.rand(1) * 0.2 - 0.1
-            p0_new[-1] = 1. + np.random.rand(1) * 0.2 - 0.1
+            p0_new[-2] = 0. + np.random.rand(1) * 0.3 - 0.15
+            p0_new[-1] = 1. + np.random.rand(1) * 0.3 - 0.15
             p0.append(p0_new)
-
 
     # initialize emcee sampler
     sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob_gp, threads=n_threds, args=(ref_data, obs_data, wvl, data_std))

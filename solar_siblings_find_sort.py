@@ -40,8 +40,8 @@ snr_functions_dir = os.getcwd() + '/' + 'Distances_SNR_models_subsample_guesslik
 
 # distance/similarity measurements
 chdir('Distances_Step1_p0_SNRsamples0_ext0_oklinesonly')
-evaluate_bands = list([1, 2, 3, 4])
-plot_flux_offsets = [0., 0.1, 0.2]  # [0., 0.04, 0.08, 0.12, 0.16, 0.2]
+evaluate_bands = list([1,2,3,4])
+plot_flux_offsets = [0., 0.05, 0.1, 0.15, 0.2]  # [0., 0.04, 0.08, 0.12, 0.16, 0.2]
 snr_multi = 1.
 
 final_selected_objects = {}
@@ -58,15 +58,15 @@ for i_b in evaluate_bands:
         # snr_col = 'snr_c' + str(i_b) + '_guess'
         snr_col = 'snr_spectrum'
         snr_values = params_joined[snr_col] * snr_multi
-        snr_range = np.linspace(10, np.max(snr_values), 600)
+        snr_range = np.linspace(10, np.nanpercentile(snr_values, 98.), 600)
         if 'median' in metric:
             y_lim = (np.nanpercentile(metric_values, 0.5), np.nanpercentile(metric_values, 99.5))
-            plt.scatter(snr_values, metric_values, s=0.5, alpha=0.3, color='black')
+            plt.scatter(snr_values, metric_values, s=2, lw=0, alpha=0.25, color='black')
         else:
             y_lim = (0, np.nanpercentile(metric_values, 90))
-            plt.errorbar(snr_values, metric_values, yerr=params_joined[metric + '_std'], fmt='o', ms=0.5,
-                         elinewidth=0.3, alpha=0.3, color='black')
-        x_lim = (0, 125)  # np.nanpercentile(snr_values, 99.8))
+            plt.errorbar(snr_values, metric_values, yerr=params_joined[metric + '_std'], fmt='.', ms=2,
+                         elinewidth=0.3, alpha=0.25, color='black', markeredgewidth=0)
+        x_lim = (0, np.nanpercentile(snr_values, 98.))
         plt.ylim(y_lim)
         plt.title(metric + ' band:' + str(i_b))
         plt.xlim(x_lim)

@@ -1,5 +1,4 @@
 from solar_siblings_functions import *
-from astropy.modeling import models, fitting
 
 from multiprocessing import Pool
 from time import time
@@ -29,7 +28,7 @@ d_wvl = 0.0
 save_plots = False
 
 # evaluate spectrum
-n_noise_samples = 750
+n_noise_samples = 1500
 noise_power = 0
 test_spectrum_is_line = False
 
@@ -84,7 +83,7 @@ for evaluate_band in observe_bands:
     print ' Initial linelist mask pixels', np.sum(idx_lines_mask)
 
     sim_metrices = ['braycurtis', 'canberra', 'chebyshev', 'cityblock', 'correlation', 'cosine', 'minkowski',
-                    'wchebyshev', 'sqeuclidean', 'euclidean', 'chi2', 'EW', 'median_sep']
+                    'wchebyshev', 'sqeuclidean', 'euclidean', 'chi2', 'EW', 'median_sep', 'sum', 'px_over', 'px_under']
     sim_metrices_std = [m + '_std' for m in sim_metrices]
     sim_dtypes = ['float64' for i in range(2 * len(sim_metrices))]
 
@@ -174,17 +173,27 @@ for evaluate_band in observe_bands:
 
         # generate plots and fitted functions
         txt_out = open(fit_results_path, 'w')
-        txt_out.write('metric,amplitude,x_0,alpha,y_const,n_mask_px\n')
+        txt_out.write('metric,x_shift,pow_multi,pow_amp,pow_x_0,pow_alpha,lin_slop,lin_inter\n')
         for col in sim_metrices:
+
+            # determine initial fit parameters
+            sim_data = sim_results[col]
+            if sim_data[0] > sim_data[-1]:
+                pow_multi = 1.
+            else:
+                pow_multi = -1.
+            sim_med = np.median(sim_data)
+            if sim_med > 100:
+                pow_amp = 250.
+            else:
+                pow_amp = 1.
+
             # fit function
-            f_init = models.PowerLaw1D() + models.Const1D(amplitude=0)
+            f_init = models.Shift(offset=0.) | (models.Const1D(amplitude=pow_multi)*models.PowerLaw1D(amplitude=pow_amp, x_0=1.0, alpha=1.0) + models.Linear1D(slope=0, intercept=sim_med))
             fitter = fitting.LevMarLSQFitter()
             gg_fit = fitter(f_init, sim_results['snr_guesslike'], sim_results[col])
             plt.plot(observe_snr, gg_fit(observe_snr), alpha=0.5, label='Fitted curve', c='black', lw=0.5)
             # plot
-            # plt.scatter(sim_results['snr'], sim_results[col],
-            #             lw=0, s=3, c='black', alpha=0.5)
-            # plt.fill_between(sim_results['snr'], sim_results[col]-sim_results[col+'_std'], sim_results[col]+sim_results[col+'_std'], facecolor='black', alpha=0.2)
             plt.errorbar(sim_results['snr_guesslike'], sim_results[col], yerr=sim_results[col+'_std'], c='black', alpha=0.75, errorevery=2,
                          capsize=0, elinewidth=0.75, linewidth=0.5, fmt='o', ms=1.5, label='Simulations')  #, lw=0, s=3, c='black', alpha=0.5)
             # output(s)
@@ -196,7 +205,7 @@ for evaluate_band in observe_bands:
             plt.close()
             # print gg_fit
             # save fitted values
-            txt_out.write(col+','+str(gg_fit.amplitude_0.value)+','+str(gg_fit.x_0_0.value)+','+str(gg_fit.alpha_0.value)+','+str(gg_fit.amplitude_1.value)+'\n')
+            txt_out.write(col+','+str(gg_fit.offset_0.value)+','+str(gg_fit.amplitude_1.value)+','+str(gg_fit.amplitude_2.value)+','+str(gg_fit.x_0_2.value)+','+str(gg_fit.alpha_2.value)+','+str(gg_fit.slope_3.value)+','+str(gg_fit.intercept_3.value)+'\n')
         txt_out.close()
 
     # plot observed spectra

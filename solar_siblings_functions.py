@@ -17,6 +17,7 @@ from scipy.spatial.distance import *
 np.seterr(all='ignore')
 from scipy.signal import correlate
 from lmfit.models import GaussianModel, VoigtModel
+from astropy.modeling import models, fitting
 
 OK_LINES_ONLY = True
 USE_SUBSAMPLE = False
@@ -126,7 +127,7 @@ def get_band_mask(wvl_values, evaluate_band):
 
 
 def kernel_params_ok(p):
-    amp, rad, amp2, rad2, amp_off, cont_norm = p
+    amp, rad, amp2, rad2, cont_norm = p
     if not 1e-9 < amp < 1e-2:
         return False
     if not 1e-8 < rad < 0.05:
@@ -135,8 +136,8 @@ def kernel_params_ok(p):
         return False
     if not 0.1 < rad2 < 40:
         return False
-    if not -0.2 < amp_off < 0.2:
-        return False
+    # if not -0.2 < amp_off < 0.2:
+    #     return False
     if not 0.8 < cont_norm < 1.2:
         return False
     return True
@@ -150,11 +151,12 @@ def kernel_cont(amp, rad):
     return amp * kernels.Matern52Kernel(rad)
 
 
-def spectrum_offset_norm(params, f, norm_only=False):
-    amp_off, cont_norm = params
+def spectrum_offset_norm(params, f, norm_only=True):
     if norm_only:
+        cont_norm = params
         f_new = f / cont_norm
     else:
+        amp_off, cont_norm = params
         f_new = f + (1. - f) * amp_off
         f_new /= cont_norm
     return f_new
@@ -171,7 +173,7 @@ def get_kernel(p, add_cont=True):
 def lnprob_gp(params, f_ref, f_obs, wvl, data_std, spectrum_off_norm=True):
     # evaluate selected parameters
     if kernel_params_ok(params):
-        gp = george.GP(get_kernel(params[:-2]))
+        gp = george.GP(get_kernel(params[:-1]))
         if data_std is not None:
             gp.compute(wvl, data_std)
         else:
@@ -180,7 +182,7 @@ def lnprob_gp(params, f_ref, f_obs, wvl, data_std, spectrum_off_norm=True):
         # gp_noise = gp.sample(size=1)
         # normalization and abs lines amplitude fitting
         if spectrum_off_norm:
-            f_ref_new = spectrum_offset_norm(params[-2:], f_ref)
+            f_ref_new = spectrum_offset_norm(params[-1:], f_ref)
             return gp.lnlikelihood(f_ref_new - f_obs, wvl)
         else:
             return gp.lnlikelihood(f_ref - f_obs, wvl)
@@ -200,18 +202,17 @@ def fit_gp_kernel(init_guess, ref_data, obs_data, wvl, nwalkers=32, n_threds=1, 
     # add random amount of noise to the data
     if normal_dist_guess:
         # standard normal distribution of initial values
-        perc_rand = 25.
+        perc_rand = 20.
         p0 = [given_guess + given_guess * np.random.randn(ndim) * perc_rand/100. for i_w in range(nwalkers)]
     else:
         # uniform distribution of initial values
-        perc_rand = 100.
+        perc_rand = 75.
         p0 = list([])
         for i_w in range(nwalkers):
             guess_max_offset = given_guess * perc_rand/100.
             p0_new = given_guess + guess_max_offset * np.random.rand(ndim) - guess_max_offset / 2.
             # correction for spectrum amp and offset levels
-            p0_new[-2] = 0. + np.random.rand(1) * 0.3 - 0.15
-            p0_new[-1] = 1. + np.random.rand(1) * 0.3 - 0.15
+            p0_new[-1] = 1. + np.random.rand(1) * 0.2 - 0.1
             p0.append(p0_new)
 
     # initialize emcee sampler
@@ -251,7 +252,8 @@ def compute_distances(obs, obs_std, orig, d=1., norm=True):
     else:
         dist_weight = (1. / obs_std) ** d
 
-    spec_diff = np.abs(obs - orig)
+    spec_diff = np.abs(orig - obs)
+    spec_diff_sig = orig - obs
     if norm:
         n_data = len(spec_diff)
     else:
@@ -268,7 +270,10 @@ def compute_distances(obs, obs_std, orig, d=1., norm=True):
                     np.sum(np.sqrt(spec_diff**2. * dist_weight))/n_data,  # euclidean(pix_ref, pix_spec, w=dist_weight),
                     np.sum(spec_diff**2. * dist_weight)/n_data,
                     np.abs(np.sum(1. - obs) - np.sum(1. - orig))/n_data,
-                    np.nanmedian(orig - obs)]  # difference in median levels, aka median spectral difference
+                    np.nanmedian(spec_diff_sig),  # difference in median levels, aka median spectral difference
+                    np.sum(spec_diff_sig),
+                    np.sum(spec_diff_sig < 0),
+                    np.sum(spec_diff_sig > 0)]
     return results_list
 
 
@@ -303,7 +308,10 @@ def evaluate_spectrum(pix_spec, pix_std):
 def metric_by_snr(data, metric, snr_val):
     func_data = data[data['metric'] == metric]
     if len(func_data) == 1:
-        return func_data['amplitude'] * (snr_val/func_data['x_0']) ** (-1*func_data['alpha']) + func_data['y_const']
+        # ,pow_multi,pow_amp,pow_x_0,pow_alpha,lin_slop,lin_inter
+        snr_func = models.Shift(offset=func_data['x_shift']) | (models.Const1D(amplitude=func_data['pow_multi'])*models.PowerLaw1D(amplitude=func_data['pow_amp'], x_0=func_data['pow_x_0'], alpha=func_data['pow_alpha']) + models.Linear1D(slope=func_data['lin_slop'], intercept=func_data['lin_inter']))
+        return snr_func(snr_val)
+        #return func_data['amplitude'] * (snr_val/func_data['x_0']) ** (-1*func_data['alpha']) + func_data['y_const']
     else:
         return np.full(len(snr_val), np.nan)
 

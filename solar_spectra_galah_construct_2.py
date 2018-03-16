@@ -39,7 +39,7 @@ galah_param_file = 'sobject_iraf_'+dr_num+'_reduced_'+data_date+'.fits'
 # select ok objects
 galah_param = Table.read(galah_data_input + galah_param_file)
 idx_rows = np.logical_and(galah_param['red_flag'] == 64,  # also removes wavelength calibration and molecfit problems
-                          galah_param['snr_c2_guess'] > 220)  # get only spectra of good quality
+                          galah_param['snr_c2_guess'] > 210)  # get only spectra of good quality
 idx_rows = np.logical_and(idx_rows, galah_param['flag_guess'] == 0)
 idx_rows = np.logical_and(idx_rows, galah_param['sobject_id'] > 140301000000000)
 galah_param = galah_param[idx_rows]
@@ -81,7 +81,7 @@ for date_sel in possible_unique:
             for i_b in range(len(flux)):
                 norm_ok_mask = determine_norm_mask(wvl[i_b], norm_bad_ranges)
                 flux[i_b] = spectra_normalize(wvl[i_b]-np.mean(wvl[i_b]), flux[i_b], fit_mask=norm_ok_mask,
-                                              steps=15, sigma_low=2., sigma_high=3., order=11, n_min_perc=5.,
+                                              steps=11, sigma_low=2., sigma_high=3., order=11, n_min_perc=5.,
                                               return_fit=False, func='cheb')
 
                 # fit_res = spectra_normalize(wvl[i_b] - np.mean(wvl[i_b]), flux[i_b], fit_mask=norm_ok_mask,
@@ -127,13 +127,13 @@ for date_sel in possible_unique:
     # filter out outlying spectra (based on supplied reference solar spectra)
     solar_ref_flux_galah_sub = solar_ref_flux_all[np.in1d(solar_ref_wvl_all, galah_twilight_spectra_wvl)]
     eucl_match = np.sqrt(np.nansum((galah_twilight_spectra_list - solar_ref_flux_galah_sub) ** 2, axis=1) / np.sum(np.isfinite(galah_twilight_spectra_list), axis=1))
-    eucl_match_thr = np.nanpercentile(eucl_match, 95.)
+    eucl_match_thr = np.nanpercentile(eucl_match, 97.)
     idx_bad_match = eucl_match >= eucl_match_thr
     galah_twilight_spectra_list[np.where(idx_bad_match)[0], :] = np.nan
     print 'Removed rows:', np.sum(idx_bad_match)
 
     # filter out any outlying data points aka spikes in the dataset (based on per pixel statistics)
-    std_outliers = 2.
+    std_outliers = 2.5
     galah_solar_median = np.nanmedian(galah_twilight_spectra_list, axis=0)
     galah_solar_std = np.nanstd(galah_twilight_spectra_list, axis=0)
     idx_outliers = np.abs(galah_twilight_spectra_list - galah_solar_median) > std_outliers * galah_solar_std
@@ -152,7 +152,7 @@ for date_sel in possible_unique:
     # plt.close()
 
     out_file = galah_data_input_solar
-    out_file += 'twilight_spectrum_galah_ext'+str(read_ext)+'_date'+str(date_sel)+'.txt'
+    out_file += 'twilight_spectrum_galah_ext'+str(read_ext)+'_date'+str(date_sel)+'_p11.txt'
     txt = open(out_file, 'w')
     for i_l in range(len(galah_twilight_spectra_wvl)):
         txt.write(str(galah_twilight_spectra_wvl[i_l]) + ' ' + str(galah_solar_median[i_l]) + '\n')

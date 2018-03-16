@@ -17,6 +17,9 @@ def metrices_to_investigate(all_cols):
     remove_metrices = np.array(['C', 'Ce', 'Co', 'Eu', 'K', 'La', 'Li', 'Mo', 'Nd', 'Ru', 'Sm', 'Sr', 'Zr', 'EW', 'correlation', 'snr_spectrum'])
     metrices = [s for s in metrices if np.sum(remove_metrices == s) <= 0]
     metrices = [s for s in metrices if '_std' not in s]
+    metrices = [s for s in metrices if '_min' not in s]
+    metrices = [s for s in metrices if '_max' not in s]
+    # metrices = [s for s in metrices if 'px_' not in s]
     return metrices
 
 
@@ -34,69 +37,118 @@ solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix)
 
 # read Galah guess and/or cannon parameters
 galah_params = Table.read(galah_data_input+'sobject_iraf_53_reduced_20180222.fits')
+cannon_params = Table.read(galah_data_input+'sobject_iraf_iDR2_180108_cannon.fits')
+cannon_params = cannon_params[cannon_params['flag_cannon'] == 0]
 
 # define directory with simulations of metrics SNR functions
 snr_functions_dir = os.getcwd() + '/' + 'Distances_SNR_models_subsample_guesslike-alllines_gauss_oklinesonly' + '/'
 
 # distance/similarity measurements
+
 chdir('Distances_Step1_p0_SNRsamples0_ext0_oklinesonly')
-evaluate_bands = list([1,2,3,4])
+combined_bands = False
+
+# chdir('Distances_Step2_p0_SNRsamples500_ext0_oklinesonly_origsamp_no-offset-fit')
+# combined_bands = True
+
+evaluate_bands = list([1, 2, 3, 4])
 plot_flux_offsets = [0., 0.05, 0.1, 0.15, 0.2]  # [0., 0.04, 0.08, 0.12, 0.16, 0.2]
 snr_multi = 1.
+PLOT_RESULTS = True
 
+y_lim_plot = {'braycurtis':0.025, 'canberra':0.025, 'chebyshev':0.25, 'chi2':0.03, 'cityblock':0.045,
+              'cosine':0.02, 'minkowski':0.00015, 'sqeuclidean':0.0005, 'wchebyshev':0.3, 'euclidean':0.04}
+v_lim_params = {'Teff_cannon':(5400, 5850), 'Feh_cannon':(-0.3, 0.15), 'Logg_cannon':(3.9, 4.5)}
 final_selected_objects = {}
 
 for i_b in evaluate_bands:
-    print 'Band', i_b
-    sim_res = Table.read('solar_similarity_b{:.0f}.fits'.format(i_b))
+    if combined_bands:
+        sim_suffix = ''.join([str(sb) for sb in evaluate_bands])
+        print 'Bands', sim_suffix
+        sim_res = Table.read('solar_similarity_b'+sim_suffix+'.fits')
+        plot_suffix = sim_suffix
+    else:
+        print 'Band', i_b
+        sim_res = Table.read('solar_similarity_b{:.0f}.fits'.format(i_b))
+        plot_suffix = str(i_b)
     params_joined = join(sim_res, galah_params, keys='sobject_id')
+    params_joined = join(sim_res, cannon_params, keys='sobject_id', join_type='left')
+
+    # # colourful plot by parameters
+    # for c_col in ['Teff_cannon', 'Feh_cannon', 'Logg_cannon']:
+    #     print ' Param plot: '+c_col
+    #     c_data = params_joined[c_col]
+    #     plt.scatter(params_joined['snr_spectrum'], params_joined['chi2'],
+    #                 lw=0, s=0.75, c=c_data, cmap='viridis',
+    #                 vmin=v_lim_params[c_col][0], vmax=v_lim_params[c_col][1])
+    #     plt.ylim(0, np.nanpercentile(params_joined['chi2'], 90))
+    #     plt.xlim(10, np.nanpercentile(params_joined['snr_spectrum'], 99.))
+    #     plt.colorbar()
+    #     plt.savefig('cannon_chi2_b' + plot_suffix + '_'+c_col+'.png', dpi=450)
+    #     plt.close()
 
     for metric in metrices_to_investigate(sim_res.colnames):
         print ' Metric:', metric
         metric_values = params_joined[metric]
-        # snr_col = 'snr_c' + str(i_b) + '_iraf'
-        # snr_col = 'snr_c' + str(i_b) + '_guess'
         snr_col = 'snr_spectrum'
         snr_values = params_joined[snr_col] * snr_multi
         snr_range = np.linspace(10, np.nanpercentile(snr_values, 98.), 600)
-        if 'median' in metric:
-            y_lim = (np.nanpercentile(metric_values, 0.5), np.nanpercentile(metric_values, 99.5))
-            plt.scatter(snr_values, metric_values, s=2, lw=0, alpha=0.25, color='black')
-        else:
-            y_lim = (0, np.nanpercentile(metric_values, 90))
-            plt.errorbar(snr_values, metric_values, yerr=params_joined[metric + '_std'], fmt='.', ms=2,
-                         elinewidth=0.3, alpha=0.25, color='black', markeredgewidth=0)
-        x_lim = (0, np.nanpercentile(snr_values, 98.))
-        plt.ylim(y_lim)
-        plt.title(metric + ' band:' + str(i_b))
-        plt.xlim(x_lim)
 
-        # k = kde.gaussian_kde(np.vstack([snr_values, metric_values]))
-        # xi, yi = np.mgrid[x_lim[0]:x_lim[1]:75 * 1j, y_lim[0]:y_lim[0]:75 * 1j]
-        # zi = k(np.vstack([xi.flatten(), yi.flatten()]))
-        # plt.contour(xi, yi, zi.reshape(xi.shape))
+        if PLOT_RESULTS:
+            if 'median' in metric:
+                y_lim = (np.nanpercentile(metric_values, 0.5), np.nanpercentile(metric_values, 99.5))
+                plt.scatter(snr_values, metric_values, s=2, lw=0, alpha=0.25, color='black')
+            else:
+                # check if has min max error bat
+                y_lim = (0, np.nanpercentile(metric_values, 90))
+                plt.errorbar(snr_values, metric_values, yerr=params_joined[metric + '_std'], fmt='.', ms=2,
+                             elinewidth=0.3, alpha=0.25, color='black', markeredgewidth=0)
+                # plt.errorbar(snr_values, metric_values, yerr=[params_joined[metric + '_min'], params_joined[metric + '_max']], fmt='.', ms=2,
+                #              elinewidth=0.3, alpha=0.25, color='black', markeredgewidth=0)
 
-        plt.xlabel(snr_col)
-        plt.ylabel(metric)
-        # add SNR function for observed metric
-        if 'median' not in metric:
-            for f_o in plot_flux_offsets:
-                snr_metrices_functions = get_snr_metric_functions(snr_functions_dir, i_b, f_o)
-                plt.plot(snr_range, metric_by_snr(snr_metrices_functions, metric, snr_range), lw=1, c='red', label='{:.2f}'.format(f_o))
+            # # show flagged spectra in this scatter plot
+            # if combined_bands:
+            #     idx_red_flag = params_joined['red_flag'] > 0
+            # else:
+            #     idx_red_flag = np.bitwise_and(params_joined['red_flag'], 2**(i_b-1)) > 0
+            #     if i_b >= 3:
+            #         # also search for molecfit problems
+            #         idx_red_flag = np.logical_or(idx_red_flag,
+            #                                      np.bitwise_and(params_joined['red_flag'], 2**(i_b - 3 + 4)) > 0)
+            # # add them to the plot
+            # if np.sum(idx_red_flag) > 0:
+            #     plt.scatter(snr_values[idx_red_flag], metric_values[idx_red_flag], s=2, lw=0, alpha=1, color='C1')
 
-            # choose objects to be considered in the next step
-            max_metric_value = metric_by_snr(get_snr_metric_functions(snr_functions_dir, i_b, 0.1),
-                                             metric, params_joined[snr_col]*snr_multi)
+            x_lim = (10, np.nanpercentile(snr_values, 99.))
+            plt.ylim(y_lim)
+            plt.title(metric + ' band:' + plot_suffix)
+            plt.xlim(x_lim)
+            plt.xlabel(snr_col)
+            plt.ylabel(metric)
+
+            # add SNR function for observed metric
+            if 'median' not in metric and not combined_bands:
+                for f_o in plot_flux_offsets:
+                    snr_metrices_functions = get_snr_metric_functions(snr_functions_dir, i_b, f_o)
+                    plt.plot(snr_range, metric_by_snr(snr_metrices_functions, metric, snr_range), lw=1, c='C2', label='{:.2f}'.format(f_o))
+            # plt.show()
+            plt.savefig(metric + '_b' + plot_suffix + '_g-all.png', dpi=450)
+            plt.close()
+
+        # choose objects to be considered in the next step
+        if 'px_' not in metric:
+            sel_limit = 0.1
+            max_metric_value = metric_by_snr(get_snr_metric_functions(snr_functions_dir, i_b, sel_limit),
+                                             metric, params_joined[snr_col] * snr_multi)
             idx_selected_sobjects = params_joined[metric] < max_metric_value
             final_selected_objects = fill_results_dictionary(final_selected_objects, metric,
                                                              np.int64(list(params_joined['sobject_id'][idx_selected_sobjects].data)))
-            # print ','.join([str(s) for s in params_joined['sobject_id'][idx_selected_sobjects]])
 
-        # plt.show()
-        plt.savefig(metric + '_b' + str(i_b) + '_g-all.png', dpi=450)
-        plt.close()
+    if combined_bands:
+        # can be executed only once
+        break
 
-txt_out_selection = 'final_selection.txt'
+txt_out_selection = 'final_selection_{:.2f}.txt'.format(sel_limit)
 txt = open(txt_out_selection, 'w')
 seleted_per_metric = list([])
 for metric_key in final_selected_objects.keys():
@@ -107,8 +159,11 @@ for metric_key in final_selected_objects.keys():
     selected_uniq = uniq_id[repeats_id >= len(evaluate_bands)]
     seleted_per_metric.append(selected_uniq)
     print selected_uniq
-    txt.write(metric_key + ':\n')
-    txt.write(','.join([str(su) for su in selected_uniq]))
+    txt.write(metric_key + ' ('+str(len(selected_uniq))+'):\n')
+    if len(selected_uniq) > 1000:
+        txt.write('...........')
+    else:
+        txt.write(','.join([str(su) for su in selected_uniq]))
     txt.write('\n\n')
 # objects selected by all metrices
 uniq_id, repeats_id = np.unique(np.hstack(seleted_per_metric), return_counts=True)
@@ -116,93 +171,3 @@ selected_uniq = uniq_id[repeats_id >= len(evaluate_bands)]
 txt.write('All:\n')
 txt.write(','.join([str(su) for su in selected_uniq]))
 txt.close()
-
-'''
-params_joined = join(galah_params, sim_res, keys='sobject_id')
-for i_b in [2]:
-    for metric in sim_metrics:
-        metric_values = params_joined[metric]
-        if np.sum(np.isfinite(metric_values)) <= 0:
-            continue
-        snr_col = 'snr_c'+str(i_b)+'_guess'
-        snr_values = params_joined[snr_col]
-        snr_range = np.linspace(np.min(snr_values), np.max(snr_values), 200)
-        # plt.scatter(snr_values, metric_values, lw=0, s=2)
-        plt.errorbar(snr_values, metric_values, yerr=params_joined[metric+'_std'], fmt='o', ms=1, elinewidth=0.3, alpha=0.3)
-        # y_perc = np.percentile(metric_values, 500./len(metric_values)*100)
-        # plt.axhline(y=y_perc, c='black')
-        plt.ylim(0, np.nanpercentile(metric_values, 92))
-        plt.title(metric+' band:'+str(i_b))
-        plt.xlim(0, np.nanpercentile(snr_values, 99.8))
-        plt.xlabel(snr_col)
-        plt.ylabel(metric)
-        # add SNR function for observed metric
-        plt.plot(snr_range, metric_by_snr(snr_metrices_functions1, metric, snr_range), lw=1, c='red', label='0.00')
-        plt.plot(snr_range, metric_by_snr(snr_metrices_functions6, metric, snr_range), lw=1, c='red', label='0.10')
-        # plt.show()
-        plt.savefig(metric+'_b'+str(i_b)+'.png', dpi=450)
-        plt.close()
-
-        if '_std' not in metric:
-            # compute new values of similarities
-            new_metric_value = metric_values - metric_by_snr(snr_metrices_functions1, metric, snr_values)
-            plt.scatter(snr_values, new_metric_value, lw=0, s=2, alpha=0.3, label='0.00')
-            plt.xlabel(snr_col)
-            plt.ylabel(metric)
-            plt.ylim(0, np.nanpercentile(new_metric_value, 90))
-            plt.xlim(0, np.nanpercentile(snr_values, 99.8))
-            plt.savefig(metric + '_b' + str(i_b) + '_SNRnorm.png', dpi=300)
-            plt.close()
-
-sim_metrics = [s for s in sim_metrics if '_std' not in s]
-# remove metrices
-sim_metrics = [s for s in sim_metrics if np.sum(remove_metrices == s) <= 0]
-print sim_metrics
-
-for metric in sim_metrics:
-
-    print '-----------------------------'
-    print metric
-    if not np.isfinite(sim_res[metric]).all():
-        continue
-
-    metric_value_snr = metric_by_snr(snr_metrices_functions4, metric, params_joined[snr_col])
-    idx_lower = params_joined[metric] < metric_value_snr
-    s_lower = params_joined['sobject_id'][idx_lower]
-    print ','.join([str(a) for a in s_lower])
-
-    idx_sort = np.argsort(sim_res[metric]-metric_value_snr)
-    sim_res[metric][idx_sort] = scores
-
-    print '-- Best'
-    s_best = sim_res[idx_sort]['sobject_id'][:120]
-    print ','.join([str(a) for a in s_best])
-    # plot_spectra(s_best, dr52_dir, galah_params, solar_flx, solar_wvl,
-    #              galah_linelist=galah_linelist, save_path=metric + '_b2_spectra_best.png',
-    #              band=2, ext=0, y_range=(0.7, 1.05), x_range=(5680, 5710))
-    print '-- Worst'
-    s_worst = sim_res[idx_sort]['sobject_id'][-120:]
-    print ','.join([str(a) for a in s_worst])
-    # plot_spectra(s_worst, dr52_dir, galah_params, solar_flx, solar_wvl,
-    #              galah_linelist=galah_linelist, save_path=metric + '_b2_spectra_worst.png',
-    #              band=2, ext=0, y_range=(0.7, 1.05), x_range=(5680, 5710))
-
-# final
-sim_res['final_score'] = np.nanmean(sim_res[sim_metrics].to_pandas().values, axis=1)
-print '-- Final best'
-idx_sort = np.argsort(sim_res['final_score'])
-s_best = sim_res[idx_sort]['sobject_id'][:120]
-print ','.join([str(a) for a in s_best])
-print '-- Final worst'
-s_worst = sim_res[idx_sort]['sobject_id'][-120:]
-print ','.join([str(a) for a in s_worst])
-# plot_spectra(s_best, dr52_dir, galah_params, solar_flx, solar_wvl,
-#                  galah_linelist=galah_linelist, save_path='all_b2_spectra_best.png',
-#                  band=2, ext=0, y_range=(0.7, 1.05), x_range=(5680, 5710))
-
-# plt.scatter(params_joined['chebyshev'], params_joined['minkowski'])
-# plt.show()
-# plt.close()
-
-print sim_res[list(np.hstack(('sobject_id',sim_metrics,'final_score')))]
-'''

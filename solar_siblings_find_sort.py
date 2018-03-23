@@ -61,6 +61,7 @@ y_lim_plot = {'braycurtis':0.025, 'canberra':0.025, 'chebyshev':0.25, 'chi2':0.0
 v_lim_params = {'Teff_cannon':(5400, 5850), 'Feh_cannon':(-0.3, 0.15), 'Logg_cannon':(3.9, 4.5)}
 final_selected_objects = {}
 
+
 for i_b in evaluate_bands:
     if combined_bands:
         sim_suffix = ''.join([str(sb) for sb in evaluate_bands])
@@ -73,6 +74,22 @@ for i_b in evaluate_bands:
         plot_suffix = str(i_b)
     params_joined = join(sim_res, galah_params, keys='sobject_id')
     params_joined = join(sim_res, cannon_params, keys='sobject_id', join_type='left')
+
+    # # plot coorelations between different metrices
+    # plt.scatter(sim_res['canberra'], sim_res['correlation'], s=2, lw=0, c='C2', alpha=0.25, label='correlation')
+    # plt.scatter(sim_res['canberra'], sim_res['euclidean'], s=2, lw=0, c='C1', alpha=0.25, label='euclidean')
+    # plt.scatter(sim_res['canberra'], sim_res['braycurtis'], s=2, lw=0, c='C3', alpha=0.25, label='braycurtis')
+    # plt.scatter(sim_res['canberra'], sim_res['chi2'], s=2, lw=0, c='C4', alpha=0.25, label='chi2')
+    # plt.xlim(0., 0.06)
+    # plt.ylim(0., 0.12)
+    # plt.xlabel('Canberra similarity metric')
+    # plt.ylabel('Other similarity metrics')
+    # plt.legend(markerscale=6)
+    # plt.tight_layout()
+    # # plt.show()
+    # plt.savefig('sim_combine_b' + plot_suffix + '.png', dpi=250)
+    # plt.close()
+    # continue
 
     # # colourful plot by parameters
     # for c_col in ['Teff_cannon', 'Feh_cannon', 'Logg_cannon']:

@@ -81,7 +81,7 @@ for date_sel in possible_unique:
             for i_b in range(len(flux)):
                 norm_ok_mask = determine_norm_mask(wvl[i_b], norm_bad_ranges)
                 flux[i_b] = spectra_normalize(wvl[i_b]-np.mean(wvl[i_b]), flux[i_b], fit_mask=norm_ok_mask,
-                                              steps=11, sigma_low=2., sigma_high=3., order=11, n_min_perc=5.,
+                                              steps=11, sigma_low=2., sigma_high=3., order=7, n_min_perc=5.,
                                               return_fit=False, func='cheb')
 
                 # fit_res = spectra_normalize(wvl[i_b] - np.mean(wvl[i_b]), flux[i_b], fit_mask=norm_ok_mask,
@@ -114,10 +114,14 @@ for date_sel in possible_unique:
         return np.hstack(flux)
 
     # multiprocessing for faster processing on cluster
-    n_multi = 20
+    n_multi = 10
     pool = Pool(processes=n_multi)
     galah_twilight_spectra_list = pool.map(read_and_prepare_twilight_spectra, flats_sobjects)
     pool.close()
+
+    # galah_twilight_spectra_list = list([])
+    # for f_id in flats_sobjects:
+    #     galah_twilight_spectra_list.append(read_and_prepare_twilight_spectra(f_id))
 
     # define final wavelengths of the twilight spectrum
     galah_twilight_spectra_list = np.vstack(galah_twilight_spectra_list)
@@ -145,6 +149,7 @@ for date_sel in possible_unique:
 
     # creation of final solar spectrum per Galah band
     galah_solar_median = np.nanmedian(galah_twilight_spectra_list, axis=0)
+    galah_solar_std = np.nanstd(galah_twilight_spectra_list, axis=0)
 
     # plt.plot(solar_ref_wvl_all, solar_ref_flux_all)
     # plt.plot(galah_twilight_spectra_wvl, galah_solar_median)
@@ -152,8 +157,8 @@ for date_sel in possible_unique:
     # plt.close()
 
     out_file = galah_data_input_solar
-    out_file += 'twilight_spectrum_galah_ext'+str(read_ext)+'_date'+str(date_sel)+'_p11.txt'
+    out_file += 'twilight_spectrum_galah_ext'+str(read_ext)+'_date'+str(date_sel)+'_p7.txt'
     txt = open(out_file, 'w')
     for i_l in range(len(galah_twilight_spectra_wvl)):
-        txt.write(str(galah_twilight_spectra_wvl[i_l]) + ' ' + str(galah_solar_median[i_l]) + '\n')
+        txt.write(str(galah_twilight_spectra_wvl[i_l]) + ' ' + str(galah_solar_median[i_l])+ ' ' + str(galah_solar_std[i_l]) + '\n')
     txt.close()

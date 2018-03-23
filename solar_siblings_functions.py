@@ -18,6 +18,7 @@ np.seterr(all='ignore')
 from scipy.signal import correlate
 from lmfit.models import GaussianModel, VoigtModel
 from astropy.modeling import models, fitting
+from copy import deepcopy
 
 OK_LINES_ONLY = True
 USE_SUBSAMPLE = False
@@ -31,6 +32,10 @@ else:
     # use for normal processing and comparison
     min_wvl = np.array([4725, 5665, 6485, 7700])
     max_wvl = np.array([4895, 5865, 6725, 7875])
+
+# TEMP FOR GP TESTING PURPOSE - REMOVE AFTER FINIS
+# min_wvl = np.array([4750, 5700, 6600, 7700])
+# max_wvl = np.array([4850, 5800, 6700, 7800])
 
 rv_weights = np.array([0.75, 1., 1., 0.25])
 
@@ -128,26 +133,24 @@ def get_band_mask(wvl_values, evaluate_band):
 
 def kernel_params_ok(p):
     amp, rad, amp2, rad2, cont_norm = p
-    if not 1e-9 < amp < 1e-2:
+    if not 1e-7 < amp < 1e-3:
         return False
-    if not 1e-8 < rad < 0.05:
+    if not 1e-4 < rad < 1e-1:
         return False
-    if not 1e-9 < amp2 < 1e-3:
+    if not 1e-7 < amp2 < 5e-4:
         return False
-    if not 0.1 < rad2 < 40:
+    if not 1. < rad2 < 20.:
         return False
-    # if not -0.2 < amp_off < 0.2:
-    #     return False
-    if not 0.8 < cont_norm < 1.2:
+    if not 0.95 < cont_norm < 1.05:
         return False
     return True
 
 
-def kernel_noise(amp, rad):
+def kernel_cont(amp, rad):
     return amp * kernels.ExpSquaredKernel(rad)
 
 
-def kernel_cont(amp, rad):
+def kernel_noise(amp, rad):
     return amp * kernels.Matern52Kernel(rad)
 
 
@@ -169,28 +172,36 @@ def get_kernel(p, add_cont=True):
         kernel += kernel_cont(amp2, rad2)
     return kernel
 
+from george.modeling import Model
+class mean_flux_class(Model):
+    def __init__(self, f):
+        self.f = deepcopy(f)
+    def get_value(self, t):
+        return self.f
+
 
 def lnprob_gp(params, f_ref, f_obs, wvl, data_std, spectrum_off_norm=True):
     # evaluate selected parameters
     if kernel_params_ok(params):
-        gp = george.GP(get_kernel(params[:-1]))
+        if spectrum_off_norm:
+            f_ref_new = spectrum_offset_norm(params[-1:], f_ref)
+        else:
+            f_ref_new = f_ref
+
+        flux_class = mean_flux_class(f_ref_new)
+        gp = george.GP(get_kernel(params[:-1]), mean=flux_class)
         if data_std is not None:
             gp.compute(wvl, data_std)
         else:
             gp.compute(wvl)
-        # draw a sample noise from kernel distribution - not needed
-        # gp_noise = gp.sample(size=1)
-        # normalization and abs lines amplitude fitting
-        if spectrum_off_norm:
-            f_ref_new = spectrum_offset_norm(params[-1:], f_ref)
-            return gp.lnlikelihood(f_ref_new - f_obs, wvl)
-        else:
-            return gp.lnlikelihood(f_ref - f_obs, wvl)
+
+        return gp.log_likelihood(f_obs)
+
     else:
         return -np.inf
 
 
-def fit_gp_kernel(init_guess, ref_data, obs_data, wvl, nwalkers=32, n_threds=1, n_burn=75, data_std=None,
+def fit_gp_kernel(init_guess, init_guess_2, ref_data, obs_data, wvl, nwalkers=32, n_threds=1, n_burn=75, data_std=None,
                   n_per_burn=10, exit_lnp=1.5, normal_dist_guess=True):
     # compute number of burn steps
     n_burn_steps = np.int32(n_burn/n_per_burn)
@@ -206,13 +217,11 @@ def fit_gp_kernel(init_guess, ref_data, obs_data, wvl, nwalkers=32, n_threds=1, 
         p0 = [given_guess + given_guess * np.random.randn(ndim) * perc_rand/100. for i_w in range(nwalkers)]
     else:
         # uniform distribution of initial values
-        perc_rand = 75.
+        guess_low = np.array(init_guess)
+        guess_hig = np.array(init_guess_2)
         p0 = list([])
         for i_w in range(nwalkers):
-            guess_max_offset = given_guess * perc_rand/100.
-            p0_new = given_guess + guess_max_offset * np.random.rand(ndim) - guess_max_offset / 2.
-            # correction for spectrum amp and offset levels
-            p0_new[-1] = 1. + np.random.rand(1) * 0.2 - 0.1
+            p0_new = guess_low + np.random.rand(ndim) * (guess_hig - guess_low)
             p0.append(p0_new)
 
     # initialize emcee sampler
@@ -430,8 +439,12 @@ def get_wvl_log_shift(obs_flux, obs_wvl, ref_flux, ref_wvl, reduce_bands):
         log_shift_wvl = log_shift_px * wvl_step
 
         # store to the array
-        log_shifts_res.append(log_shift_wvl)
-        weights_res.append(rv_weights[ccd])
+        if np.abs(log_shift_px) < 10:
+            log_shifts_res.append(log_shift_wvl)
+            weights_res.append(rv_weights[ccd])
+        else:
+            # something went horribly wrong
+            pass
 
     # compute weighted mean of results
     shift_res = np.sum(np.array(log_shifts_res)*np.array(weights_res))/np.sum(weights_res)

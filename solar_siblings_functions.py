@@ -21,7 +21,7 @@ from astropy.modeling import models, fitting
 from copy import deepcopy
 
 OK_LINES_ONLY = True
-USE_SUBSAMPLE = False
+USE_SUBSAMPLE = True
 REF_SPECTRUM_PREPARE = False
 
 if REF_SPECTRUM_PREPARE:

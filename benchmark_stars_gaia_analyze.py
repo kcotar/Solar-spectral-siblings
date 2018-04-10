@@ -27,4 +27,4 @@ galah_gaia_match['Feh_diff'] = galah_gaia_match['Fe_H_cannon'] - galah_gaia_matc
 print galah_gaia_match['sobject_id', 'std_name', 'Teff_bench', 'e_Teff_bench', 'Teff_cannon', 'e_Teff_cannon', 'flag_cannon']
 print galah_gaia_match['sobject_id', 'std_name', 'Logg_bench', 'e_Logg_bench', 'Logg_cannon', 'e_Logg_cannon', 'flag_cannon']
 print galah_gaia_match['sobject_id', 'std_name', 'Feh_bench', 'e_Feh_bench', 'Fe_H_cannon', 'e_Fe_H_cannon', 'flag_cannon']
-print galah_gaia_match['sobject_id', 'std_name', 'Teff_diff', 'Logg_diff', 'Feh_diff', 'flag_cannon']
+print galah_gaia_match['sobject_id', 'std_name', 'Teff_diff', 'Logg_diff', 'Feh_diff', 'flag_cannon', 'red_flag']

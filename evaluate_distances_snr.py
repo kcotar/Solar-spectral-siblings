@@ -28,7 +28,7 @@ d_wvl = 0.0
 save_plots = False
 
 # evaluate spectrum
-n_noise_samples = 1500
+n_noise_samples = 1
 noise_power = 0
 test_spectrum_is_line = False
 
@@ -44,7 +44,7 @@ print 'Read reference GALAH Solar spectra'
 suffix_solar_ref = '_ext0_dateall_offset'
 solar_input_dir = galah_data_input+'Solar_data_dr53/'
 
-new_dir = 'Distances_SNR_models_subsample'
+new_dir = 'Distances_SNR_models'
 if compute_guesslike_snr:
     new_dir += '_guesslike'
     if guesslike_all_lines:
@@ -61,12 +61,16 @@ if OK_LINES_ONLY:
     new_dir += '_oklinesonly'
 if not USE_SUBSAMPLE:
     new_dir += '_origsamp'
+if n_noise_samples == 1:
+    new_dir += '_nonoise'
 
 move_to_dir(out_dir + new_dir)
 
 observe_bands = list([1, 2, 3, 4])
-observe_snr = range(5, 170, 1)
-observe_flux = [0., 0.05, 0.1, 0.15, 0.2]  # np.arange(0, 0.21, 0.02)  # float percents  0...1
+all_bands_at_once = True
+observe_snr = range(5, 170, 10)
+# observe_flux = [0., 0.05, 0.1, 0.15, 0.2]  #  float percents  0...1
+observe_flux = np.arange(-0.20, 0.21, 0.02)
 
 for evaluate_band in observe_bands:
     print 'Evaluating band', evaluate_band, every_nth_solar_pixel[evaluate_band-1]
@@ -75,7 +79,14 @@ for evaluate_band in observe_bands:
     if test_spectrum_is_line:
         solar_flx[:] = 1.
     # band wvl mask
-    idx_band_mask = get_band_mask(solar_wvl, evaluate_band)
+    if all_bands_at_once:
+        idx_band_mask = np.full(len(solar_wvl), False)
+        for e_b_mask in observe_bands:
+            idx_band_mask = np.logical_or(idx_band_mask, get_band_mask(solar_wvl, e_b_mask))
+        b_suffix = ''.join([str(o_b) for o_b in observe_bands])
+    else:
+        idx_band_mask = get_band_mask(solar_wvl, evaluate_band)
+        b_suffix = str(evaluate_band)
     # generate mask of pixels used in comparison
     idx_lines_mask = get_linelist_mask(solar_wvl)
     # print number of pixels
@@ -95,7 +106,7 @@ for evaluate_band in observe_bands:
     spectrum_flux_offsets = list([])
     for offset_percent in observe_flux:
         print ' Flux offset:', offset_percent
-        filename_suffix = '_b{:.0f}_flux{:.2f}'.format(evaluate_band, offset_percent)
+        filename_suffix = '_b'+b_suffix+'_flux{:.2f}'.format(offset_percent)
         flux_offset = (1. - solar_flx) * offset_percent
         spectrum_flux_offsets.append(flux_offset)
 
@@ -131,16 +142,19 @@ for evaluate_band in observe_bands:
                     if compute_guesslike_snr:
                         if guesslike_all_lines:
                             # median signal at all wavelength pixels
-                            signal = np.nanmedian(solar_flx)
+                            signal_med = np.nanmedian(solar_flx)
                             # determine actual snr of generated noise at selected pixels - guess like
-                            signal_noisy = (signal + snr_noise_pred)
+                            signal_noisy = (solar_flx + snr_noise_pred)
                         else:
                             # median signal at selected abundance wavelength pixels
-                            signal = np.nanmedian(solar_flx[idx_band_lines_mask])
+                            signal_med = np.nanmedian(solar_flx[idx_band_lines_mask])
                             # determine actual snr of generated noise at selected pixels - guess like
-                            signal_noisy = (signal + snr_noise_pred)[:, idx_band_lines_mask]
-                        noise = 1.4826 / np.sqrt(2) * np.nanmedian(np.abs(signal_noisy[:, 1:] - signal_noisy[:, :-1]))
-                        snr_guess_like = signal / noise
+                            signal_noisy = (solar_flx[idx_band_lines_mask] + snr_noise_pred)[:, idx_band_lines_mask]
+                        noise_med = 1.4826 / np.sqrt(2) * np.nanmedian(np.abs(signal_noisy[:, 1:] - signal_noisy[:, :-1]))
+                        # plt.plot(signal_noisy[:, :-1][0])
+                        # plt.plot(signal_noisy[:, 1:][0])
+                        # plt.show()
+                        snr_guess_like = signal_med / noise_med
                         print '   "Guess like" snr {:.2f}:'.format(snr_guess_like)
                     else:
                         snr_guess_like = 0.
@@ -172,41 +186,42 @@ for evaluate_band in observe_bands:
             sim_results = Table.read(file_out_fits)
 
         # generate plots and fitted functions
-        txt_out = open(fit_results_path, 'w')
-        txt_out.write('metric,x_shift,pow_multi,pow_amp,pow_x_0,pow_alpha,lin_slop,lin_inter\n')
-        for col in sim_metrices:
+        if n_noise_samples != 1:
+            txt_out = open(fit_results_path, 'w')
+            txt_out.write('metric,x_shift,pow_multi,pow_amp,pow_x_0,pow_alpha,lin_slop,lin_inter\n')
+            for col in sim_metrices:
 
-            # determine initial fit parameters
-            sim_data = sim_results[col]
-            if sim_data[0] > sim_data[-1]:
-                pow_multi = 1.
-            else:
-                pow_multi = -1.
-            sim_med = np.median(sim_data)
-            if sim_med > 100:
-                pow_amp = 250.
-            else:
-                pow_amp = 1.
+                # determine initial fit parameters
+                sim_data = sim_results[col]
+                if sim_data[0] > sim_data[-1]:
+                    pow_multi = 1.
+                else:
+                    pow_multi = -1.
+                sim_med = np.median(sim_data)
+                if sim_med > 100:
+                    pow_amp = 250.
+                else:
+                    pow_amp = 1.
 
-            # fit function
-            f_init = models.Shift(offset=0.) | (models.Const1D(amplitude=pow_multi)*models.PowerLaw1D(amplitude=pow_amp, x_0=1.0, alpha=1.0) + models.Linear1D(slope=0, intercept=sim_med))
-            fitter = fitting.LevMarLSQFitter()
-            gg_fit = fitter(f_init, sim_results['snr_guesslike'], sim_results[col])
-            plt.plot(observe_snr, gg_fit(observe_snr), alpha=0.5, label='Fitted curve', c='black', lw=0.5)
-            # plot
-            plt.errorbar(sim_results['snr_guesslike'], sim_results[col], yerr=sim_results[col+'_std'], c='black', alpha=0.75, errorevery=2,
-                         capsize=0, elinewidth=0.75, linewidth=0.5, fmt='o', ms=1.5, label='Simulations')  #, lw=0, s=3, c='black', alpha=0.5)
-            # output(s)
-            plt.xlabel('Simulated SNR')
-            plt.ylabel('Similarity measure')
-            plt.legend()
-            plt.tight_layout()
-            plt.savefig(col + filename_suffix+'.png', dpi=500)
-            plt.close()
-            # print gg_fit
-            # save fitted values
-            txt_out.write(col+','+str(gg_fit.offset_0.value)+','+str(gg_fit.amplitude_1.value)+','+str(gg_fit.amplitude_2.value)+','+str(gg_fit.x_0_2.value)+','+str(gg_fit.alpha_2.value)+','+str(gg_fit.slope_3.value)+','+str(gg_fit.intercept_3.value)+'\n')
-        txt_out.close()
+                # fit function
+                f_init = models.Shift(offset=0.) | (models.Const1D(amplitude=pow_multi)*models.PowerLaw1D(amplitude=pow_amp, x_0=1.0, alpha=1.0) + models.Linear1D(slope=0, intercept=sim_med))
+                fitter = fitting.LevMarLSQFitter()
+                gg_fit = fitter(f_init, sim_results['snr_guesslike'], sim_results[col])
+                plt.plot(observe_snr, gg_fit(observe_snr), alpha=0.5, label='Fitted curve', c='black', lw=0.5)
+                # plot
+                plt.errorbar(sim_results['snr_guesslike'], sim_results[col], yerr=sim_results[col+'_std'], c='black', alpha=0.75, errorevery=2,
+                             capsize=0, elinewidth=0.75, linewidth=0.5, fmt='o', ms=1.5, label='Simulations')  #, lw=0, s=3, c='black', alpha=0.5)
+                # output(s)
+                plt.xlabel('Simulated SNR')
+                plt.ylabel('Similarity measure')
+                plt.legend()
+                plt.tight_layout()
+                plt.savefig(col + filename_suffix+'.png', dpi=500)
+                plt.close()
+                # print gg_fit
+                # save fitted values
+                txt_out.write(col+','+str(gg_fit.offset_0.value)+','+str(gg_fit.amplitude_1.value)+','+str(gg_fit.amplitude_2.value)+','+str(gg_fit.x_0_2.value)+','+str(gg_fit.alpha_2.value)+','+str(gg_fit.slope_3.value)+','+str(gg_fit.intercept_3.value)+'\n')
+            txt_out.close()
 
     # plot observed spectra
     plt.figure(figsize=(14, 4))
@@ -217,7 +232,7 @@ for evaluate_band in observe_bands:
     # plt.xlim((5701, 5716))
     plt.tight_layout()
     plt.legend()
-    plt.savefig('solar_spectra_b'+str(evaluate_band)+'.png', dpi=300)
+    plt.savefig('solar_spectra_b'+b_suffix+'.png', dpi=300)
     plt.close()
 
     print ' Final fit results comparison'
@@ -227,5 +242,11 @@ for evaluate_band in observe_bands:
             y_vals = metric_by_snr(Table.read(list_fit_results[i_f]), metric, observe_snr)
             plt.plot(observe_snr, y_vals, lw=1, label='{:.2f}'.format(observe_flux[i_f]))
         plt.legend()
-        plt.savefig(metric+'_all_b'+str(evaluate_band)+'.png', dpi=500)
+        plt.savefig(metric+'_all_b'+b_suffix+'.png', dpi=500)
         plt.close()
+
+    # only one iteration is needed
+    if all_bands_at_once:
+        break
+
+

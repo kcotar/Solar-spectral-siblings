@@ -21,7 +21,7 @@ from astropy.modeling import models, fitting
 from copy import deepcopy
 
 OK_LINES_ONLY = True
-USE_SUBSAMPLE = True
+USE_SUBSAMPLE = False
 REF_SPECTRUM_PREPARE = False
 
 if REF_SPECTRUM_PREPARE:
@@ -120,15 +120,27 @@ def get_solar_data(solar_input_dir, suffix, every_nth=1, bands_together=True):
         return solar_wvl[idx_finite][::every_nth], solar_flx[idx_finite][::every_nth]
 
 
-def get_linelist_mask(wvl_values, d_wvl=0):
+def get_linelist_mask(wvl_values, d_wvl=0., element=None):
     idx_lines_mask = wvl_values < 0.
-    for line in galah_linelist:
+
+    if element is None:
+        galah_linelist_use = deepcopy(galah_linelist)
+    else:
+        galah_linelist_use = galah_linelist[galah_linelist['Element'] == element]
+
+    for line in galah_linelist_use:
         idx_lines_mask[np.logical_and(wvl_values >= line['line_start'] - d_wvl, wvl_values <= line['line_end'] + d_wvl)] = True
+
     return idx_lines_mask
 
 
 def get_band_mask(wvl_values, evaluate_band):
     return np.logical_and(wvl_values >= min_wvl[evaluate_band - 1], wvl_values <= max_wvl[evaluate_band - 1])
+
+
+def get_used_elements():
+    elements = np.sort(np.unique(galah_linelist['Element']))
+    return elements
 
 
 def kernel_params_ok(p):
@@ -139,7 +151,7 @@ def kernel_params_ok(p):
         return False
     if not 1e-7 < amp2 < 5e-4:
         return False
-    if not 1. < rad2 < 20.:
+    if not 0.1 < rad2 < 30.:
         return False
     if not 0.95 < cont_norm < 1.05:
         return False
@@ -184,18 +196,18 @@ def lnprob_gp(params, f_ref, f_obs, wvl, data_std, spectrum_off_norm=True):
     # evaluate selected parameters
     if kernel_params_ok(params):
         if spectrum_off_norm:
-            f_ref_new = spectrum_offset_norm(params[-1:], f_ref)
+            f_obs_new = spectrum_offset_norm(params[-1:], f_obs)
         else:
-            f_ref_new = f_ref
+            f_obs_new = f_obs
 
-        flux_class = mean_flux_class(f_ref_new)
+        flux_class = mean_flux_class(f_ref)
         gp = george.GP(get_kernel(params[:-1]), mean=flux_class)
         if data_std is not None:
             gp.compute(wvl, data_std)
         else:
             gp.compute(wvl)
 
-        return gp.log_likelihood(f_obs)
+        return gp.log_likelihood(f_obs_new)
 
     else:
         return -np.inf

@@ -151,9 +151,9 @@ def kernel_params_ok(p):
         return False
     if not 1e-7 < amp2 < 5e-4:
         return False
-    if not 0.1 < rad2 < 30.:
+    if not 0.01 < rad2 < 35.:
         return False
-    if not 0.95 < cont_norm < 1.05:
+    if not 0.98 < cont_norm < 1.02:
         return False
     return True
 
@@ -184,6 +184,7 @@ def get_kernel(p, add_cont=True):
         kernel += kernel_cont(amp2, rad2)
     return kernel
 
+
 from george.modeling import Model
 class mean_flux_class(Model):
     def __init__(self, f):
@@ -192,22 +193,29 @@ class mean_flux_class(Model):
         return self.f
 
 
+def cut_spectrum(flx, f_min, f_max):
+    flx_out = deepcopy(flx)
+    flx_out[flx_out >= f_max] = f_max
+    flx_out[flx_out <= f_min] = f_min
+    return flx_out
+
+
 def lnprob_gp(params, f_ref, f_obs, wvl, data_std, spectrum_off_norm=True):
     # evaluate selected parameters
     if kernel_params_ok(params):
         if spectrum_off_norm:
-            f_obs_new = spectrum_offset_norm(params[-1:], f_obs)
+            f_ref_new = spectrum_offset_norm(params[-1:], f_ref)
         else:
-            f_obs_new = f_obs
+            f_ref_new = f_ref
 
-        flux_class = mean_flux_class(f_ref)
+        flux_class = mean_flux_class(f_ref_new)
         gp = george.GP(get_kernel(params[:-1]), mean=flux_class)
         if data_std is not None:
             gp.compute(wvl, data_std)
         else:
             gp.compute(wvl)
 
-        return gp.log_likelihood(f_obs_new)
+        return gp.lnlikelihood(f_obs)
 
     else:
         return -np.inf

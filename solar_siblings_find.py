@@ -47,7 +47,7 @@ save_gp_params_read_append = True
 save_gp_params_read_interpol = False
 n_threads = 11
 n_walkers = np.array([32, 32, 32, 32])[process_bands-1]
-n_steps = np.array([80, 80, 90, 130])[process_bands-1]
+n_steps = np.array([85, 85, 85, 140])[process_bands-1]
 
 # evaluate spectrum
 n_noise_samples = 1000
@@ -310,8 +310,8 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
                 print ' Running emcee'
                 # print 'diff_var/2:', diff_var/2.
                 rad_noise_init = [0.003, 0.005, 0.007, 0.009][evaluate_band - 1]  # start process with different initial values for every band
-                init_guess_l = [diff_var-diff_var/4., rad_noise_init-0.001, 1e-5,  5., 0.98]
-                init_guess_h = [diff_var+diff_var/4., rad_noise_init+0.001, 1e-4, 15., 1.02]
+                init_guess_l = [diff_var-diff_var/4., rad_noise_init-0.001, 1e-5,  5., 0.99]
+                init_guess_h = [diff_var+diff_var/4., rad_noise_init+0.001, 2e-4, 15., 1.01]
                 sampler, fit_res, fit_prob = fit_gp_kernel(init_guess_l, init_guess_h,
                                                            solar_flx[idx_ref], flux_b_res, solar_wvl[idx_ref],
                                                            nwalkers=n_walkers[i_c], n_threds=n_threads, n_burn=n_steps[i_c],
@@ -347,10 +347,10 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
                     c_fig.savefig(str(s_obj) + '_corner_b' + str(evaluate_band) + '.png', dpi=200)
                     plt.close(c_fig)
 
-                    c_fig = corner.corner(sampler_chain_vals[-last_n_steps*n_walkers[i_c]:, :], truths=kernel_fit_last_n,
-                                          quantiles=[0.16, 0.5, 0.84], labels=gp_param_labels, bins=30)
-                    c_fig.savefig(str(s_obj) + '_corner_b' + str(evaluate_band) + '_last'+str(last_n_steps)+'.png', dpi=200)
-                    plt.close(c_fig)
+                    # c_fig = corner.corner(sampler_chain_vals[-last_n_steps*n_walkers[i_c]:, :], truths=kernel_fit_last_n,
+                    #                       quantiles=[0.16, 0.5, 0.84], labels=gp_param_labels, bins=30)
+                    # c_fig.savefig(str(s_obj) + '_corner_b' + str(evaluate_band) + '_last'+str(last_n_steps)+'.png', dpi=200)
+                    # plt.close(c_fig)
 
             # add fitted values to the resulting table
             gp_final_res.append(kernel_fit)
@@ -363,7 +363,7 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
             gp = george.GP(get_kernel(kernel_fit[:-1]), mean=solar_flx_class)
             gp.compute(solar_wvl[idx_ref], yerr=flux_std_b_res*flux_b_res,)
             # renormalization added to the stellar spectrum itself not solar fo consistency
-            flux_b_res_norm = spectrum_offset_norm(kernel_fit[-1:], flux_b_res)
+            flux_b_res_norm = flux_b_res*kernel_fit[-1:]  # spectrum_offset_norm(kernel_fit[-1:], flux_b_res)
             flux_gp_pred = gp.sample_conditional(flux_b_res_norm, solar_wvl[idx_ref], size=n_noise_samples)
 
             if save_plots:

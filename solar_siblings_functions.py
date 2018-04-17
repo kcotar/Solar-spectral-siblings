@@ -151,7 +151,7 @@ def kernel_params_ok(p):
         return False
     if not 1e-7 < amp2 < 5e-4:
         return False
-    if not 0.01 < rad2 < 35.:
+    if not 0.01 < rad2 < 50.:
         return False
     if not 0.98 < cont_norm < 1.02:
         return False
@@ -203,19 +203,22 @@ def cut_spectrum(flx, f_min, f_max):
 def lnprob_gp(params, f_ref, f_obs, wvl, data_std, spectrum_off_norm=True):
     # evaluate selected parameters
     if kernel_params_ok(params):
-        if spectrum_off_norm:
-            f_ref_new = spectrum_offset_norm(params[-1:], f_ref)
-        else:
-            f_ref_new = f_ref
 
-        flux_class = mean_flux_class(f_ref_new)
-        gp = george.GP(get_kernel(params[:-1]), mean=flux_class)
+        gp = george.GP(get_kernel(params[:-1]))
         if data_std is not None:
             gp.compute(wvl, data_std)
         else:
             gp.compute(wvl)
 
-        return gp.lnlikelihood(f_obs)
+        gp_lnp = gp.lnlikelihood(f_obs - f_ref)
+
+        if spectrum_off_norm:
+            f_obs_new = spectrum_offset_norm(params[-1:], f_obs)
+            idx_cont_like = np.abs(f_ref - 1.) < 0.02
+            median_diff = (np.median(f_obs_new[idx_cont_like]) - np.median(f_ref[idx_cont_like]))
+            return gp_lnp + np.log(1./np.abs(median_diff)) * np.sum(idx_cont_like) / 15.
+        else:
+            return gp_lnp
 
     else:
         return -np.inf

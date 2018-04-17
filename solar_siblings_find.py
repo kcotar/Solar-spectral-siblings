@@ -45,9 +45,12 @@ save_gp_params = True
 save_gp_median_spectra = True
 save_gp_params_read_append = True
 save_gp_params_read_interpol = False
-n_threads = 11
-n_walkers = np.array([32, 32, 32, 32])[process_bands-1]
-n_steps = np.array([85, 85, 85, 140])[process_bands-1]
+n_threads = 10
+n_walkers = np.array([30, 30, 30, 30])[process_bands-1]
+n_steps = np.array([120, 120, 120, 200])[process_bands-1]
+# TEST settings
+# n_walkers = np.array([20, 20, 20, 20])[process_bands-1]
+# n_steps = np.array([70, 70, 70, 120])[process_bands-1]
 
 # evaluate spectrum
 n_noise_samples = 1000
@@ -181,6 +184,8 @@ for line in txt_o:
 txt_o.close()
 solar_like_sobjects = list(np.hstack(solar_like_sobjects))
 print 'Number of pre-selected objects:', len(solar_like_sobjects)
+
+# solar_like_sobjects = [170206004201399, 160129004701355, 170911002101145,150412002601280,170219001601353,150409002601317,160422002001351,170507010101097,171227005801006]
 
 # random subset objects from parameters selection
 # n_rand = 25
@@ -362,16 +367,20 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
             solar_flx_class = mean_flux_class(solar_flx_corr)
             gp = george.GP(get_kernel(kernel_fit[:-1]), mean=solar_flx_class)
             gp.compute(solar_wvl[idx_ref], yerr=flux_std_b_res*flux_b_res,)
+
             # renormalization added to the stellar spectrum itself not solar fo consistency
-            flux_b_res_norm = flux_b_res*kernel_fit[-1:]  # spectrum_offset_norm(kernel_fit[-1:], flux_b_res)
+            # flux_b_res_norm = flux_b_res*kernel_fit[-1:]
+            flux_b_res_norm = spectrum_offset_norm(kernel_fit[-1:], flux_b_res)
+
+            # create GP samples
             flux_gp_pred = gp.sample_conditional(flux_b_res_norm, solar_wvl[idx_ref], size=n_noise_samples)
 
             if save_plots:
-                plt.plot(solar_flx_corr, c='red', alpha=0.8, lw=0.5)
-                plt.plot(flux_b_res, c='blue', alpha=0.8, lw=0.5)
-                plt.plot(np.median(flux_gp_pred, axis=0), c='black', alpha=0.8, lw=0.5)
-                for i_pred in range(20):
-                    plt.plot(flux_gp_pred[i_pred, :], c='black', alpha=0.1, lw=0.3)
+                plt.plot(solar_flx_corr[1500:2000], c='red', alpha=0.8, lw=0.5)
+                plt.plot(flux_b_res[1500:2000], c='blue', alpha=0.8, lw=0.5)
+                plt.plot(np.median(flux_gp_pred, axis=0)[1500:2000], c='black', alpha=0.8, lw=0.5)
+                # for i_pred in range(20):
+                #     plt.plot(flux_gp_pred[i_pred, :], c='black', alpha=0.1, lw=0.3)
                 plt.ylim((0.4, 1.1))
                 plt.tight_layout()
                 # plt.show()

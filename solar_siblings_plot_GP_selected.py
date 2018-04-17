@@ -6,7 +6,8 @@ import pandas as pd
 
 bands = [1, 2, 3, 4]
 b_suffx = ''.join([str(b) for b in bands])
-input_dir = 'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_multiabund_comb_2'
+input_dir = 'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp__norm-obs_lnlike-obs'
+# input_dir = '/home/klemen/data4_mount/Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325__1_norm-obs/'
 chdir(input_dir)
 
 sim_file_root = 'solar_similarity_b'+b_suffx+'_gp'
@@ -32,8 +33,8 @@ for s_b in bands:
         idx = np.where(sim_data['sobject_id'] == s_id)[0]
         flx_multi = gp_data[gp_data['sobject_id'] == s_id]['cont_norm_b' + str(s_b)][0]
         flx_vals = flx[idx, :][0]
-        plt.plot(wvl, flx_vals, lw=1, alpha=0.2, c='blue')
-        plt.plot(wvl, flx_vals / flx_multi, lw=1, alpha=0.2, c='green')
+        plt.plot(wvl, flx_vals, lw=1, alpha=0.75)#, c='blue')
+        # plt.plot(wvl, flx_vals / flx_multi, lw=1, alpha=0.2, c='green')
         flx_multi_all.append(flx_multi)
     idx_sol_use = np.logical_and(solar_wvl >= wvl[0], solar_wvl <= wvl[-1])
     plt.plot(solar_wvl[idx_sol_use], solar_flx[idx_sol_use], lw=2, c='black')

@@ -47,8 +47,9 @@ save_gp_params_read_append = True
 save_gp_params_read_interpol = False
 n_threads = 10
 n_walkers = np.array([30, 30, 30, 30])[process_bands-1]
-n_steps = np.array([120, 120, 120, 200])[process_bands-1]
-# TEST settings
+n_steps = np.array([125, 125, 125, 185])[process_bands-1]
+# # TEST settings
+# n_threads = 5
 # n_walkers = np.array([20, 20, 20, 20])[process_bands-1]
 # n_steps = np.array([70, 70, 70, 120])[process_bands-1]
 
@@ -315,8 +316,8 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
                 print ' Running emcee'
                 # print 'diff_var/2:', diff_var/2.
                 rad_noise_init = [0.003, 0.005, 0.007, 0.009][evaluate_band - 1]  # start process with different initial values for every band
-                init_guess_l = [diff_var-diff_var/4., rad_noise_init-0.001, 1e-5,  5., 0.99]
-                init_guess_h = [diff_var+diff_var/4., rad_noise_init+0.001, 2e-4, 15., 1.01]
+                init_guess_l = [diff_var-diff_var/3., rad_noise_init-0.0015, 1e-5,  5., 0.99]
+                init_guess_h = [diff_var+diff_var/3., rad_noise_init+0.0015, 2e-4, 25., 1.01]
                 sampler, fit_res, fit_prob = fit_gp_kernel(init_guess_l, init_guess_h,
                                                            solar_flx[idx_ref], flux_b_res, solar_wvl[idx_ref],
                                                            nwalkers=n_walkers[i_c], n_threds=n_threads, n_burn=n_steps[i_c],
@@ -329,7 +330,7 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
                         plt.plot(walkers_prob[i_w, :], lw=0.3)
                     walkers_prob = walkers_prob.flatten()                   # without this correction numpy
                     walkers_prob = walkers_prob[np.isfinite(walkers_prob)]  # percentile may return incorrect -inf value
-                    plt.ylim((np.percentile(walkers_prob, 1), np.percentile(walkers_prob, 99.9)))
+                    plt.ylim((np.percentile(walkers_prob, 0.1), np.percentile(walkers_prob, 99.9)))
                     plt.savefig(str(s_obj) + '_gp-lnprob_b' + str(evaluate_band) + '.png', dpi=250)
                     # plt.show()
                     plt.close()

@@ -5,25 +5,25 @@ from solar_siblings_functions import get_used_elements
 import pandas as pd
 
 root_dir = '/home/klemen/data4_mount/'
-sub_dirs = ['Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_1',
-            'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_2',
-            'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_3']
-dir_out = '/home/klemen/Solar-spectral-siblings/Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_comb/'
+sub_dirs = ['Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325__1',
+            'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325__2',
+            'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325__3']
+dir_out = '/home/klemen/Solar-spectral-siblings/Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_multiabund_comb/'
 
-root_dir = '/home/klemen/data4_mount/'
-sub_dirs = ['Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_interp_1',
-            'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_interp_2',
-            'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_interp_3',
-            'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_interp_4',
-            'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_interp_5',
-            'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_interp_6']
-dir_out = '/home/klemen/Solar-spectral-siblings/Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_interp_comb/'
-
-
-root_dir = '/home/klemen/Solar-spectral-siblings/'
-sub_dirs = ['Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_multiabund_1',
-            'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_multiabund_2']
-dir_out = '/home/klemen/Solar-spectral-siblings/Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_multiabund_comb_2/'
+# root_dir = '/home/klemen/data4_mount/'
+# sub_dirs = ['Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_interp_1',
+#             'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_interp_2',
+#             'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_interp_3',
+#             'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_interp_4',
+#             'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_interp_5',
+#             'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_interp_6']
+# dir_out = '/home/klemen/Solar-spectral-siblings/Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_interp_comb/'
+#
+#
+# root_dir = '/home/klemen/Solar-spectral-siblings/'
+# sub_dirs = ['Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_multiabund_1',
+#             'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_multiabund_2']
+# dir_out = '/home/klemen/Solar-spectral-siblings/Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_multiabund_comb_2/'
 system('mkdir '+dir_out)
 
 

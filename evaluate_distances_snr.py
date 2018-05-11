@@ -69,8 +69,8 @@ move_to_dir(out_dir + new_dir)
 observe_bands = list([1, 2, 3, 4])
 all_bands_at_once = True
 observe_snr = range(5, 170, 10)
-# observe_flux = [0., 0.05, 0.1, 0.15, 0.2]  #  float percents  0...1
-observe_flux = np.arange(-0.20, 0.21, 0.02)
+observe_flux = [0., 0.05, 0.1, 0.15, 0.2]  #  float percents  0...1
+# observe_flux = np.arange(-0.20, 0.21, 0.02)
 
 for evaluate_band in observe_bands:
     print 'Evaluating band', evaluate_band, every_nth_solar_pixel[evaluate_band-1]
@@ -228,10 +228,11 @@ for evaluate_band in observe_bands:
     for i_f in range(len(observe_flux)):
         plt.plot(solar_wvl, solar_flx + spectrum_flux_offsets[i_f], label='{:.2f}'.format(observe_flux[i_f]), lw=0.5)
     plt.xlim((min_wvl[evaluate_band-1], max_wvl[evaluate_band-1]))
-    # plt.ylim((0.65, 1.02))
-    # plt.xlim((5701, 5716))
+    # plt.ylim((0.6, 1.03))
+    # plt.xlim((4795, 4815))
     plt.tight_layout()
     plt.legend()
+    # plt.show()
     plt.savefig('solar_spectra_b'+b_suffix+'.png', dpi=300)
     plt.close()
 

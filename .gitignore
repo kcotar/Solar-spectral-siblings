@@ -16,6 +16,12 @@
 # Images
 *.jpg
 *.png
+*.eps
+*.pdf
+
+# Other
+*.tar
+*ReadMe
 
 # Hidden files
 .fuse*

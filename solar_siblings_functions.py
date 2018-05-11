@@ -210,13 +210,14 @@ def lnprob_gp(params, f_ref, f_obs, wvl, data_std, spectrum_off_norm=True):
         else:
             gp.compute(wvl)
 
+        gp_lnp = None
         gp_lnp = gp.lnlikelihood(f_obs - f_ref)
 
         if spectrum_off_norm:
             f_obs_new = spectrum_offset_norm(params[-1:], f_obs)
-            idx_cont_like = np.abs(f_ref - 1.) < 0.02
+            idx_cont_like = np.logical_and(np.abs(f_ref - 1.) < 0.02, np.abs(f_obs - 1.) < 0.05)
             median_diff = (np.median(f_obs_new[idx_cont_like]) - np.median(f_ref[idx_cont_like]))
-            return gp_lnp + np.log(1./np.abs(median_diff)) * np.sum(idx_cont_like) / 15.
+            return gp_lnp + np.log(1./np.abs(median_diff)) * 4.
         else:
             return gp_lnp
 

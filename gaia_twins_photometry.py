@@ -12,7 +12,11 @@ data_date = '20180327'
 cannon_param_file = 'sobject_iraf_iDR2_180325_cannon.fits'
 
 cannon_data = Table.read(galah_data_input+cannon_param_file)
-apass_data = Table.read(galah_data_input+'photometry/apass_dr53_20180327.csv')['sobject_id','Vmag','e_Vmag','Bmag','e_Bmag']
+apass_data = Table.read(galah_data_input+'photometry/apass_dr53_20180327.csv')['sobject_id','Vmag','e_Vmag','Bmag','e_Bmag', 'gpmag','e_gpmag','u_e_gpmag','rpmag','e_rpmag','u_e_rpmag','ipmag']
+wise_data = Table.read(galah_data_input+'photometry/wise_dr52_20171111.csv')['sobject_id','W1mag','W2mag','W3mag','W4mag','e_W1mag','e_W2mag','e_W3mag','e_W4mag']
+tmass_data = Table.read(galah_data_input+'photometry/2mass_dr52_20171111.csv')['sobject_id','Jmag','Hmag','Kmag', 'e_Jmag','e_Hmag','e_Kmag']
+wise_data = unique(wise_data, keys='sobject_id', keep='first')
+tmass_data = unique(tmass_data, keys='sobject_id', keep='first')
 apass_data = unique(apass_data, keys='sobject_id', keep='first')
 
 chdir('Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_multiabund_comb')
@@ -28,6 +32,8 @@ cannon_data = cannon_data[np.in1d(cannon_data['sobject_id'], solar_like_sobjects
 cannon_data = join(cannon_data, gp_res, join_type='left', keys='sobject_id')
 print len(cannon_data)
 cannon_data = join(cannon_data, apass_data, join_type='left', keys='sobject_id')
+cannon_data = join(cannon_data, wise_data, keys='sobject_id', join_type='left')
+cannon_data = join(cannon_data, tmass_data, keys='sobject_id', join_type='left')
 print len(cannon_data)
 
 
@@ -80,7 +86,7 @@ plt.savefig('gaia_apass_color.png', dpi=300)
 plt.close()
 
 
-plt.plot(Gmag_sim, parallax_sim, lw=1, color='C2', ls='--', label='Relation for Sun')
+plt.plot(Gmag_sim, parallax_sim, lw=1, color='C2', ls='--', label='Relation for the Sun')
 plt.errorbar(cannon_data['phot_g_mean_mag'], cannon_data['parallax'], yerr=cannon_data['parallax_error'],
              fmt='.', ms=5, elinewidth=1, alpha=0.8, color='black', markeredgewidth=0, label='Gaia observations')
 # plt.scatter(cannon_data['phot_g_mean_mag'][idx_mark], cannon_data['parallax'][idx_mark], lw=0, s=10, label='', c='red')
@@ -119,17 +125,32 @@ for c_col in ['Teff_cannon', 'Logg_cannon', 'Fe_H_cannon']:
 
 idx = np.logical_and(Gmag_twin_abs < 4.2, cannon_data['phot_g_mean_mag'] < 12)
 # print cannon_data[Gmag_twin_abs > 4.2]['sobject_id', 'source_id', 'ra_2', 'dec_2', 'phot_bp_rp_excess_factor', 'phot_variable_flag', 'a_g_val', 'g_mean_mag_abs']
-print cannon_data[idx]['sobject_id', 'source_id', 'ra_2', 'dec_2', 'phot_bp_rp_excess_factor', 'phot_variable_flag', 'a_g_val', 'g_mean_mag_abs', 'parallax']
+# print cannon_data[idx]['sobject_id', 'source_id', 'ra_2', 'dec_2', 'phot_bp_rp_excess_factor', 'phot_variable_flag', 'a_g_val', 'g_mean_mag_abs', 'parallax']
 
-print cannon_data[Gmag_twin_abs > 4.2]['sobject_id', 'source_id', 'l', 'b', 'astrometric_gof_al', 'astrometric_chi2_al', 'astrometric_excess_noise', 'astrometric_excess_noise_sig']
-print cannon_data[Gmag_twin_abs < 4.2]['sobject_id', 'source_id', 'l', 'b', 'astrometric_gof_al', 'astrometric_chi2_al', 'astrometric_excess_noise', 'astrometric_excess_noise_sig']
+idx_mag_multiple = Gmag_twin_abs < 4.2
+# print cannon_data[~idx_mag_multiple]['sobject_id', 'source_id', 'l', 'b', 'astrometric_gof_al', 'astrometric_chi2_al', 'astrometric_excess_noise', 'astrometric_excess_noise_sig']
+# print cannon_data[idx_mag_multiple]['sobject_id', 'source_id', 'l', 'b', 'astrometric_gof_al', 'astrometric_chi2_al', 'astrometric_excess_noise', 'astrometric_excess_noise_sig']
 
 for g_p in ['astrometric_gof_al', 'astrometric_chi2_al', 'astrometric_excess_noise', 'astrometric_excess_noise_sig']:
     range = (np.nanpercentile(cannon_data[g_p], 1), np.nanpercentile(cannon_data[g_p], 99))
-    plt.hist(cannon_data[Gmag_twin_abs > 4.2][g_p], range=range, bins=250, color='blue', alpha=0.5)
-    plt.hist(cannon_data[Gmag_twin_abs < 4.2][g_p], range=range, bins=250, color='red', alpha=0.5)
+    plt.hist(cannon_data[~idx_mag_multiple][g_p], range=range, bins=250, color='blue', alpha=0.5)
+    plt.hist(cannon_data[idx_mag_multiple][g_p], range=range, bins=250, color='red', alpha=0.5)
     plt.gca().set_yscale('log')
     plt.savefig('Gp_'+g_p+'.png', dpi=250)
     plt.close()
 
-print ','.join([str(s) for s in cannon_data[Gmag_twin_abs < 4.2]['sobject_id']])
+print ','.join([str(s) for s in cannon_data[idx_mag_multiple]['sobject_id']])
+
+
+# wise 2mass plots
+to_abs_mag = (-2.5*np.log10(((1e3/cannon_data['parallax'])/10.)**2)).reshape(-1, 1)
+c_plot = ['Bmag','Vmag','gpmag','rpmag','ipmag','phot_g_mean_mag','phot_bp_mean_mag','phot_rp_mean_mag','Jmag','Hmag','Kmag','W1mag','W2mag','W3mag','W4mag']
+x_pos = np.repeat([np.arange(len(c_plot))], len(cannon_data), axis=0)
+
+plt.scatter(x_pos[idx_mag_multiple], cannon_data[c_plot][idx_mag_multiple].to_pandas().values + to_abs_mag[idx_mag_multiple], c='C1', lw=0, s=4, alpha=0.2)
+plt.scatter(x_pos[~idx_mag_multiple], cannon_data[c_plot][~idx_mag_multiple].to_pandas().values + to_abs_mag[~idx_mag_multiple], c='C2', lw=0, s=4, alpha=0.2)
+plt.xticks(np.arange(len(c_plot)), c_plot, rotation=90)
+plt.ylim(1, 8)
+plt.tight_layout()
+plt.savefig('multi_mag_plot.png', dpi=300)
+plt.close()

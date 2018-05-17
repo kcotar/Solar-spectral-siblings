@@ -107,7 +107,7 @@ for obj in obj_analyze:
         res_final_table.add_row([obj['sobject_id'], kernel_fit[0], kernel_fit[1], mass_ratio, gmag_iso_1, gmag_iso_2, gmag_iso_final])
 
         # output complete final results
-        # res_final_table.write(res_fits, overwrite=True)
+        res_final_table.write(res_fits, overwrite=True)
 
     # PLOT RESULTS
     # presume that results for this object already exist, read and use them

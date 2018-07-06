@@ -10,7 +10,7 @@ sim_res_subdir = 'Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G2
 gp_res = Table.read(sim_res_subdir+'/solar_similarity_b1234_gp.csv')
 gaia_data = Table.read(galah_data_input+'sobject_iraf_53_gaia.fits')
 
-chdir('Binary_candidates_analysis_final')
+chdir('Binary_candidates_spectra_fit_MS')
 
 # predetermined objects
 ref_like_objects = gp_res['sobject_id']

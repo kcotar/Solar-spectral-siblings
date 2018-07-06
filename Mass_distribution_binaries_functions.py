@@ -26,7 +26,7 @@ galah_linelist = Table.read(galah_data_input + 'GALAH_Cannon_linelist_newer.csv'
 
 # preload and prepare everything - drugace se pojavlja nek cuden error ce to delam znotraj sample procedure
 # load cannon spectral model created by Gregor
-cannon_model = tc.CannonModel.read('cannon_model_noflats_nobinaries.dat')
+cannon_model = tc.CannonModel.read(galah_data_input + 'model_cannon180325_ccd1234_noflat_red0_cannon0_oksnr.dat')
 thetas = cannon_model.theta
 vectorizer = cannon_model.vectorizer
 fid = cannon_model._fiducials
@@ -196,8 +196,14 @@ def get_linelist_mask(wvl_values, d_wvl=0., element=None):
 
 
 def get_spectra_complete(s_id):
-    flx, wvl, sig = get_spectra_dr52(str(s_id), bands=[1, 2, 3], root=dr53_dir, extension=4, read_sigma=True)
+    flx, wvl, sig = get_spectra_dr52(str(s_id), bands=[1, 2, 3, 4], root=dr53_dir, extension=4, read_sigma=True)
     return np.hstack(flx), np.hstack(sig), np.hstack(wvl)
+
+
+def _get_logg_MS(teff_params):
+    # quadratic model for the MS model, same for all objects
+    y_logg = -4.062806 + 0.003456557 * teff_params - 3.470085e-7 * teff_params ** 2
+    return y_logg
 
 
 def lnprob_flx_mag_fit(params, iso, idx_wvl_model, flx_obs, flx_obs_s, G_mag_ref, G_mag_obj,
@@ -215,8 +221,8 @@ def lnprob_flx_mag_fit(params, iso, idx_wvl_model, flx_obs, flx_obs_s, G_mag_ref
         j_ratio = 10**(-0.4*Gmag_2) / 10**(-0.4*Gmag_1)
 
         # get spectra
-        flx_1 = get_cannon(teff_1, logg_cannon, feh_cannon)[idx_wvl_model]
-        flx_2 = get_cannon(teff_2, logg_cannon, feh_cannon)[idx_wvl_model]
+        flx_1 = get_cannon(teff_1, _get_logg_MS(teff_1), feh_cannon)[idx_wvl_model]
+        flx_2 = get_cannon(teff_2, _get_logg_MS(teff_2), feh_cannon)[idx_wvl_model]
         # combine them
         flx_model = 1./(1.+j_ratio) * flx_1 + 1./(1.+(1./j_ratio)) * flx_2
         # print teff_1, teff_2, j_ratio, 1./(1.+j_ratio), 1./(1.+(1./j_ratio))
@@ -234,7 +240,7 @@ def lnprob_flx_mag_fit(params, iso, idx_wvl_model, flx_obs, flx_obs_s, G_mag_ref
         # lnprob_mag = -250e3 * ((Gmag_comb_excess - Gmag_obj_excess)**2)  # squared distance
         lnprob_flux = -0.5 * (np.sum((flx_obs - flx_model) ** 2 / flx_obs_s**2 + np.log(2*np.pi*flx_obs_s**2)))
         # print lnprob_mag, lnprob_flux, lnprob_mag/lnprob_flux
-        # lnprob_mag = 0
+        lnprob_mag = 0
         # lnprob_flux = 0
         return lnprob_mag + lnprob_flux
     else:
@@ -331,11 +337,11 @@ def plot_spectra_comparison(obj_data, res_table, flx, wvl, path='plot.png', titl
     wvl_new = wvl_model[idx_cannon_wvl_mask]
     flx_new = spectra_resample(flx, wvl, wvl_new, k=1)
 
-    # get spectra as determined byy the cannon model
+    # get spectra as determined by the cannon model
     flx_cannon = get_cannon(obj_data['Teff_cannon'], obj_data['Logg_cannon'], obj_data['Fe_H_cannon'])[idx_cannon_wvl_mask]
     j_ratio = 10 ** (-0.4 * res_use['Gmag_iso2'][0]) / 10 ** (-0.4 * res_use['Gmag_iso1'][0])
-    flx_1 = get_cannon(res_use['teff_1'][0], obj_data['Logg_cannon'], obj_data['Fe_H_cannon'])[idx_cannon_wvl_mask]
-    flx_2 = get_cannon(res_use['teff_2'][0], obj_data['Logg_cannon'], obj_data['Fe_H_cannon'])[idx_cannon_wvl_mask]
+    flx_1 = get_cannon(res_use['teff_1'][0], _get_logg_MS(res_use['teff_1'][0]), obj_data['Fe_H_cannon'])[idx_cannon_wvl_mask]
+    flx_2 = get_cannon(res_use['teff_2'][0], _get_logg_MS(res_use['teff_2'][0]), obj_data['Fe_H_cannon'])[idx_cannon_wvl_mask]
     flx_model = 1. / (1. + j_ratio) * flx_1 + 1. / (1. + (1. / j_ratio)) * flx_2
 
     # plot them all and their differences

@@ -2,11 +2,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 from astropy.table import Table, join, unique
 from os import chdir
+from scipy.interpolate import spline
 import astropy.coordinates as coord
 import astropy.units as un
 
 galah_data_input = '/home/klemen/data4_mount/'
 isochrones_dir = '/home/klemen/data4_mount/isochrones/padova_Gaia_DR2_Solar/'
+evoltracks_dir = '/home/klemen/data4_mount/isochrones/padova_Gaia_DR2_evolutionary_track/'
 
 # data-table settings
 data_date = '20180327'
@@ -64,12 +66,13 @@ cannon_data['parsec'] = 1e3/cannon_data['parallax']
 # print cannon_data['sobject_id', 'phot_g_mean_mag', 'parsec', 'parallax', 'parallax_error']
 
 # simulate parallax and Gmag as would be observe by the Gaia spacecraft
-parallax_sim = np.linspace(1, 14, 100)
+parallax_sim = np.linspace(0.5, 15, 120)
 Gmag_sim = G_mean + 2.5*np.log10(((1e3/parallax_sim)/10.)**2)
 
-Gmag_twin_abs = cannon_data['phot_g_mean_mag'] - 2.5*np.log10(((1e3/cannon_data['parallax'])/10.)**2)
+Gmag_twin_abs = cannon_data['phot_g_mean_mag'] - 2.5*np.log10(((1e3/cannon_data['parallax'])/10.)**2) #- cannon_data['a_g_val']
 Vmag_twin_abs = cannon_data['Vmag'] - 2.5*np.log10(((1e3/cannon_data['parallax'])/10.)**2)
 cannon_data['g_mean_mag_abs'] = Gmag_twin_abs
+
 
 # idx_mark = np.in1d(cannon_data['sobject_id'], [150208003201286,150427004801275,160130006301234,160327004601337,160524006601258,160916001801263,161118004701221,161119002801292,170117003101044,170205005401120,170515003101036,170516002101273,171001001601082,171207003601278,180129003101184])
 # idx_mark = np.in1d(cannon_data['sobject_id'], li_high_sid)
@@ -90,6 +93,7 @@ plt.close()
 
 
 plt.plot(Gmag_sim, parallax_sim, lw=1, color='C2', ls='--', label='Relation for the Sun')
+plt.plot(Gmag_sim-0.75, parallax_sim, lw=1, color='black', ls='--', label='Sun twins binary')
 plt.errorbar(cannon_data['phot_g_mean_mag'], cannon_data['parallax'], yerr=cannon_data['parallax_error'],
              fmt='.', ms=5, elinewidth=1, alpha=0.8, color='black', markeredgewidth=0, label='Gaia observations')
 plt.errorbar(cannon_data['phot_g_mean_mag'][idx_mark], cannon_data['parallax'][idx_mark], yerr=cannon_data['parallax_error'][idx_mark],
@@ -98,7 +102,7 @@ plt.xlabel('Gaia G mean magnitude')
 
 plt.ylabel('Gaia parallax')
 plt.xlim((9, 14))
-plt.ylim((0.5, 14))
+plt.ylim((0.5, 13))
 plt.grid(color='black', ls='--', alpha=0.2)
 plt.legend()
 plt.tight_layout()
@@ -108,35 +112,118 @@ plt.close()
 # load isochrones that will be added tot he plot
 iso_data = Table.read(isochrones_dir+'isochrones_all.fits')
 iso_data = iso_data[iso_data['Age'] == 4500000000.]
+track_data = Table.read(evoltracks_dir+'isochrones_all.fits')
+track_data['BP_RP'] = track_data['G_BPmag'] - track_data['G_RPmag']
+# track_data = track_data[track_data['Age'] >= 1e9]
+
+
+binaries = [140709003001184, 150408005301259, 150830004601175, 160326002101077, 160401004401051, 160420003301342,
+            160424002101194, 160425001901273, 160426004501395, 160524004201306, 160530003901026, 160530003901054,
+            160813002101314, 160813004101136, 161104002801361, 161116003801308, 161117004001161, 170107004201309,
+            170112003601298, 170510007301226, 170514003301011, 170614004601055, 170710002701354, 150409002601317,
+            150411004101331, 150606005901339, 160327006101355, 160330002601095, 160521004801353, 160530005501077,
+            160531005101256, 160602001601307, 161008002501018, 161210004201315, 161211003101387, 161217002601138,
+            161219005101228, 170117003101044, 170408004501048, 170514003001180, 170906003601357, 170909002601291,
+            171207003601278, 171227003601367]
+multiples = [140608002501303, 140808002701338, 140808003701104, 141102002701267, 150408005301116, 150413003601344,
+             150413005101096, 160107003101157, 160125004501038, 160325002701048, 160401003901215, 160531006101153,
+             161009005901171, 161118002601376, 161212002101397, 161217004101075, 161217004101234, 170121002801292,
+             170507007801271, 170508002601001, 170508004801312, 170514002401099, 170514003301001, 170911003101383,
+             140608002501303, 140808003701104, 150413003601344, 160125004501038, 160401003901215, 161009005901171,
+             161118002601376, 161217004101234, 170507007801271, 170514002401099, 170911003101383]
+inconclusive = [161009002601018]
+
+c_m = ['Gmag', 'BP_RP']
+# add evolutionary track
+for mh_ini in np.unique(track_data['MHini']):
+    for M_star in [0.99, 1.00, 1.01]:
+        track_mag = list([])
+        track_mag2 = list([])
+
+        for i_age in np.unique(track_data['Age']):
+            track_data_age = track_data[np.logical_and(track_data['Age'] == i_age, track_data['MHini'] == mh_ini)]
+            idx_m = np.argmin(np.abs(track_data_age['Mini']-M_star))
+            # track_mag.append([np.interp(np.array([M_star]), track_data_age['Mini'][idx_m-3:idx_m+3], track_data_age[c][idx_m-3:idx_m+3], 3) for c in c_m])
+            track_mag2.append([np.polyval(np.polyfit(track_data_age['Mini'][idx_m-3:idx_m+3]-M_star, track_data_age[c][idx_m-3:idx_m+3], 3), np.array([0])) for c in c_m])
+        # track_mag = np.array(track_mag)
+        track_mag2 = np.array(track_mag2)
+        # plt.plot(track_mag[:, 1], track_mag[:, 0])
+        plt.plot(track_mag2[:, 1], track_mag2[:, 0], label='[M/H]={:.2f}  Mini={:.2f}'.format(mh_ini, M_star))
+
+    idx_bin = np.in1d(cannon_data['sobject_id'], binaries)
+    idx_mul = np.in1d(cannon_data['sobject_id'], multiples)
+    idx_inc = np.in1d(cannon_data['sobject_id'], inconclusive)
+
+    plt.scatter(cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'], Gmag_twin_abs, s=4, lw=0, label='', c='black')
+    plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_mark], Gmag_twin_abs[idx_mark], lw=0, s=8, c='C3', label='Discarded')
+    plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_bin], Gmag_twin_abs[idx_bin], lw=0, s=8, c='C0', label='Binary')
+    plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_mul], Gmag_twin_abs[idx_mul], lw=0, s=8, c='C1', label='Triple')
+    plt.ylabel(r'${\it Gaia}$ G absolute magnitude')
+    plt.xlabel(r'G$_{bp}$ - G$_{rp}$')
+    plt.xlim(0.7, 1.35)
+
+    # plt.scatter(cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'] - cannon_data['e_bp_min_rp_val'], Gmag_twin_abs, s=4, lw=0, label='', c='black')
+    # plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'] - cannon_data['e_bp_min_rp_val'])[idx_mark], Gmag_twin_abs[idx_mark], lw=0, s=8, c='C3', label='Discarded')
+    # plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'] - cannon_data['e_bp_min_rp_val'])[idx_bin], Gmag_twin_abs[idx_bin], lw=0, s=8, c='C0', label='Binary')
+    # plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'] - cannon_data['e_bp_min_rp_val'])[idx_mul], Gmag_twin_abs[idx_mul], lw=0, s=8, c='C1', label='Triple')
+    # plt.ylabel(r'${\it Gaia}$ G absolute magnitude - A$_G$')
+    # plt.xlabel(r'G$_{bp}$ - G$_{rp}$ - E(Bp-Rp)')
+    # plt.xlim(0.1, 1.35)
+
+    plt.ylim(2, 6)
+    plt.axhline(4.2, ls='--', c='black', alpha=0.3)
+    plt.gca().invert_yaxis()
+    plt.tight_layout()
+    plt.legend()
+    # plt.show()
+    # plt.savefig('mag_hr_gaia_bin-multi_evol_mh{:.2f}_A_E.png'.format(mh_ini), dpi=300)
+    plt.savefig('mag_hr_gaia_bin-multi_evol_mh{:.2f}.png'.format(mh_ini), dpi=300)
+    plt.close()
+
+raise SystemExit
 
 for c_col in ['Teff_cannon', 'Logg_cannon', 'Fe_H_cannon']:
-    plt.scatter(cannon_data['phot_bp_mean_mag']-cannon_data['phot_rp_mean_mag'], Gmag_twin_abs, s=4, lw=0, c=cannon_data[c_col], label='')
-    plt.colorbar()
-    plt.scatter((cannon_data['phot_bp_mean_mag']-cannon_data['phot_rp_mean_mag'])[idx_mark], Gmag_twin_abs[idx_mark], lw=0, s=7, label='', c='red')
-    plt.ylabel('Gmag absolute')
+
+    # add isochrone
+    for i_feh in np.unique(iso_data['MHini']):
+        idx_iso = np.logical_and(iso_data['MHini'] == i_feh, iso_data['Mini'] - iso_data['Mass'] < 0.1)
+        plt.plot(iso_data['G_BPmag'][idx_iso] - iso_data['G_RPmag'][idx_iso], iso_data['Gmag'][idx_iso],
+                 # lw=0.75, label='[M/H] = {:.1f}'.format(i_feh))
+                 lw=0.5, label='', c='black')
+
+    # plt.scatter(cannon_data['phot_bp_mean_mag']-cannon_data['phot_rp_mean_mag'], Gmag_twin_abs, s=4, lw=0, c=cannon_data[c_col], label='')
+    # plt.colorbar()
+    # plt.scatter((cannon_data['phot_bp_mean_mag']-cannon_data['phot_rp_mean_mag'])[idx_mark], Gmag_twin_abs[idx_mark], lw=0, s=7, label='', c='C3')
+    # plt.ylabel(r'{\it Gaia} G absolute magnitude')
+    # plt.xlabel(r'G$_{bp}$ - G$_{rp}$')
+    # plt.ylim(2, 6)
+    # plt.xlim(0.7, 1.35)
+
+    binaries = [140709003001184,150408005301259,150830004601175,160326002101077,160401004401051,160420003301342,160424002101194,160425001901273,160426004501395,160524004201306,160530003901026,160530003901054,160813002101314,160813004101136,161104002801361,161116003801308,161117004001161,170107004201309,170112003601298,170510007301226,170514003301011,170614004601055,170710002701354,150409002601317,150411004101331,150606005901339,160327006101355,160330002601095,160521004801353,160530005501077,160531005101256,160602001601307,161008002501018,161210004201315,161211003101387,161217002601138,161219005101228,170117003101044,170408004501048,170514003001180,170906003601357,170909002601291,171207003601278,171227003601367]
+    multiples = [140608002501303,140808002701338,140808003701104,141102002701267,150408005301116,150413003601344,150413005101096,160107003101157,160125004501038,160325002701048,160401003901215,160531006101153,161009005901171,161118002601376,161212002101397,161217004101075,161217004101234,170121002801292,170507007801271,170508002601001,170508004801312,170514002401099,170514003301001,170911003101383,140608002501303,140808003701104,150413003601344,160125004501038,160401003901215,161009005901171,161118002601376,161217004101234,170507007801271,170514002401099,170911003101383]
+    inconclusive = [161009002601018]
+    idx_bin = np.in1d(cannon_data['sobject_id'], binaries)
+    idx_mul = np.in1d(cannon_data['sobject_id'], multiples)
+    idx_inc = np.in1d(cannon_data['sobject_id'], inconclusive)
+    plt.scatter(cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'], Gmag_twin_abs, s=4, lw=0, label='', c='black')
+    plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_mark], Gmag_twin_abs[idx_mark], lw=0, s=8, c='C3', label='Discarded')
+    plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_bin], Gmag_twin_abs[idx_bin], lw=0, s=8, c='C0', label='Binary')
+    plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_mul], Gmag_twin_abs[idx_mul], lw=0, s=8, c='C1', label='Triple')
+    # plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_inc], Gmag_twin_abs[idx_inc], lw=0, s=7, c='C1', label='Inconclusive')
+    plt.ylabel(r'${\it Gaia}$ G absolute magnitude')
     plt.xlabel(r'G$_{bp}$ - G$_{rp}$')
     plt.ylim(2, 6)
     plt.xlim(0.7, 1.35)
 
-    # add isochrone
-    for i_feh in np.unique(iso_data['MHini']):
-        idx_iso = np.logical_and(iso_data['MHini'] == i_feh, iso_data['Mini']-iso_data['Mass'] < 0.1)
-        plt.plot(iso_data['G_BPmag'][idx_iso]-iso_data['G_RPmag'][idx_iso], iso_data['Gmag'][idx_iso],
-                 lw=0.75, label='[M/H] = {:.1f}'.format(i_feh))
-
+    plt.axhline(4.2, ls='--', c='black', alpha=0.3)
     plt.gca().invert_yaxis()
     plt.tight_layout()
     plt.legend()
-    plt.savefig('mag_hr_gaia_'+c_col+'.png', dpi=300)
+    # plt.savefig('mag_hr_gaia_' + c_col + '.png', dpi=300)
+    plt.savefig('mag_hr_gaia_bin-multi.png', dpi=300)
     plt.close()
 
-# idx = np.logical_and(Gmag_twin_abs < 4.2, cannon_data['phot_g_mean_mag'] < 12)
-# print cannon_data[Gmag_twin_abs > 4.2]['sobject_id', 'source_id', 'ra_2', 'dec_2', 'phot_bp_rp_excess_factor', 'phot_variable_flag', 'a_g_val', 'g_mean_mag_abs']
-# print cannon_data[idx]['sobject_id', 'source_id', 'ra_2', 'dec_2', 'phot_bp_rp_excess_factor', 'phot_variable_flag', 'a_g_val', 'g_mean_mag_abs', 'parallax']
-
 idx_mag_multiple = Gmag_twin_abs < 4.2
-# print cannon_data[~idx_mag_multiple]['sobject_id', 'source_id', 'l', 'b', 'astrometric_gof_al', 'astrometric_chi2_al', 'astrometric_excess_noise', 'astrometric_excess_noise_sig']
-# print cannon_data[idx_mag_multiple]['sobject_id', 'source_id', 'l', 'b', 'astrometric_gof_al', 'astrometric_chi2_al', 'astrometric_excess_noise', 'astrometric_excess_noise_sig']
 
 for g_p in ['astrometric_gof_al', 'astrometric_chi2_al', 'astrometric_excess_noise', 'astrometric_excess_noise_sig']:
     x_range = (np.nanpercentile(cannon_data[g_p], 1), np.nanpercentile(cannon_data[g_p], 99))

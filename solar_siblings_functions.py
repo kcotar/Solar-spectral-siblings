@@ -149,7 +149,7 @@ def kernel_params_ok(p):
         return False
     if not 1e-4 < rad < 1e-1:
         return False
-    if not 1e-7 < amp2 < 5e-4:
+    if not 1e-7 < amp2 < 1e-3:
         return False
     if not 0.01 < rad2 < 50.:
         return False

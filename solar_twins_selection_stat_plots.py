@@ -33,7 +33,8 @@ def _prepare_hist_data(d, bins, range, norm=True):
         heights = 1.*heights / np.nanmax(heights)
     return edges[:-1], heights, width
 
-
+# sid_triples = [140608002501303,140808003701104,150413003601344,160125004501038,160401003901215,161009005901171,161118002601376,161217004101234,170507007801271,170514002401099,170911003101383]
+idx_triple = np.in1d(cannon_data['sobject_id'], sid_triples)
 # make histogram plots for parameters
 plot_col = ['Teff_cannon', 'Logg_cannon', 'Fe_H_cannon']
 x_label = ['Teff [K]', 'Logg [dex]', '[Fe/H] [dex]']
@@ -43,6 +44,7 @@ for i_p in range(len(plot_col)):
     plot_vals = cannon_data[plot_col[i_p]][idx_valid_param]
     plot_vals_median = np.median(plot_vals)
     plt.hist(plot_vals, bins=75, color='black', alpha=0.33)
+    # plt.hist(cannon_data[plot_col[i_p]][idx_triple], bins=50, color='blue', alpha=0.33)
     plt.axvline(x=solar_val[i_p], color='black', ls='--', lw=2.5)
     plt.axvline(x=plot_vals_median, color='red', ls='--', lw=2.5)
     plt.title('All: {:.0f}    Unflagged: {:.0f}    Median: {:.2f}    Difference: {:.2f}'.format(len(solar_like_sobjects), len(plot_vals), plot_vals_median, plot_vals_median-solar_val[i_p]))
@@ -60,6 +62,8 @@ for i_p in range(len(plot_col)):
     # plt.show()
     plt.savefig('solar_twins_like_' + plot_col[i_p] + '_canberra.png', dpi=300)
     plt.close()
+
+raise SystemExit
 
 plot_col = [col for col in cannon_data.colnames if '_abund_cannon' in col and 'e_' not in col and 'flag_' not in col and len(col.split('_')) < 4]
 plot_col = np.sort(plot_col)

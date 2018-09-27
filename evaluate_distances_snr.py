@@ -1,4 +1,5 @@
 from solar_siblings_functions import *
+from os.path import isfile
 
 from multiprocessing import Pool
 from time import time
@@ -7,16 +8,13 @@ from time import time
 pc_name = gethostname()
 
 # input data
-if pc_name == 'gigli' or pc_name == 'klemen-P5K-E':
-    dr52_dir = '/media/storage/HERMES_REDUCED/dr5.3/'
-    galah_data_input = '/home/klemen/data4_mount/'
-    out_dir = ''
+dr52_dir = '/data4/cotar/dr5.3/'
+out_dir = '/data4/cotar/'
+galah_data_input = '/data4/cotar/'
+if pc_name == 'gigli' or pc_name == 'klemen-P5K-E' or pc_name == 'new-gigli':
     imp.load_source('helper_functions', '../Carbon-Spectra/helper_functions.py')
     imp.load_source('spectra_collection_functions', '../Carbon-Spectra/spectra_collection_functions.py')
-else:
-    dr52_dir = '/data4/cotar/dr5.3/'
-    out_dir = '/data4/cotar/'
-    galah_data_input = '/data4/cotar/'
+
 from helper_functions import *
 from spectra_collection_functions import *
 
@@ -27,8 +25,17 @@ from spectra_collection_functions import *
 d_wvl = 0.0
 save_plots = False
 
+run_unlike_solar = True
+
+teff_solar_c_MANUAL = [6000, 5900, 5800, 5700, 5600, 5500, 5400, 5300, 5200, 5100][2]
+logg_solar_c_MANUAL = [4.18, 4.25, 4.31, 4.36, 4.41, 4.45, 4.48, 4.51, 4.53, 4.54][2]
+feh_solar_c_MANUAL = 0.0
+unlike_ref_suffix = '_{:04.0f}_{:01.2f}_{:01.2f}'.format(teff_solar_c_MANUAL, logg_solar_c_MANUAL, feh_solar_c_MANUAL)
+unlike_input_dir = galah_data_input + 'Galah_ref_spectra_dr53/'
+
+
 # evaluate spectrum
-n_noise_samples = 1
+n_noise_samples = 1000
 noise_power = 0
 test_spectrum_is_line = False
 
@@ -45,6 +52,8 @@ suffix_solar_ref = '_ext0_dateall_offset'
 solar_input_dir = galah_data_input+'Solar_data_dr53/'
 
 new_dir = 'Distances_SNR_models'
+if run_unlike_solar:
+    new_dir += unlike_ref_suffix
 if compute_guesslike_snr:
     new_dir += '_guesslike'
     if guesslike_all_lines:
@@ -67,15 +76,19 @@ if n_noise_samples == 1:
 move_to_dir(out_dir + new_dir)
 
 observe_bands = list([1, 2, 3, 4])
-all_bands_at_once = True
-observe_snr = range(5, 170, 10)
+all_bands_at_once = False
+observe_snr = range(5, 170, 2)
 observe_flux = [0., 0.05, 0.1, 0.15, 0.2]  #  float percents  0...1
 # observe_flux = np.arange(-0.20, 0.21, 0.02)
 
 for evaluate_band in observe_bands:
     print 'Evaluating band', evaluate_band, every_nth_solar_pixel[evaluate_band-1]
     # solar wvl and flux data
-    solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix_solar_ref, every_nth=every_nth_solar_pixel[evaluate_band-1])
+    if not run_unlike_solar:
+        solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix_solar_ref, every_nth=every_nth_solar_pixel[evaluate_band-1])
+    else:
+        solar_wvl, solar_flx = get_unlikesolar_data(unlike_input_dir, unlike_ref_suffix, every_nth=every_nth_solar_pixel[evaluate_band-1])
+
     if test_spectrum_is_line:
         solar_flx[:] = 1.
     # band wvl mask
@@ -118,7 +131,7 @@ for evaluate_band in observe_bands:
                             dtype=(np.hstack(('float64', 'float64', sim_dtypes, 'int64'))))
 
         # generate noise and evaluate distances
-        if not os.path.isfile(file_out_fits):
+        if not isfile(file_out_fits):
             for l_mask in observe_masks:
                 idx_band_lines_mask = np.logical_and(idx_lines_mask, idx_band_mask)
                 print 'Number of abs line features:', np.sum(idx_band_lines_mask)
@@ -233,7 +246,10 @@ for evaluate_band in observe_bands:
     plt.tight_layout()
     plt.legend()
     # plt.show()
-    plt.savefig('solar_spectra_b'+b_suffix+'.png', dpi=300)
+    if not run_unlike_solar:
+        plt.savefig('solar_spectra_b'+b_suffix+'.png', dpi=300)
+    else:
+        plt.savefig('ref_spectra'+unlike_ref_suffix+'_b'+b_suffix+'.png', dpi=300)
     plt.close()
 
     print ' Final fit results comparison'
@@ -243,7 +259,7 @@ for evaluate_band in observe_bands:
             y_vals = metric_by_snr(Table.read(list_fit_results[i_f]), metric, observe_snr)
             plt.plot(observe_snr, y_vals, lw=1, label='{:.2f}'.format(observe_flux[i_f]))
         plt.legend()
-        plt.savefig(metric+'_all_b'+b_suffix+'.png', dpi=500)
+        plt.savefig(metric+'_all'+unlike_ref_suffix+'_b'+b_suffix+'.png', dpi=500)
         plt.close()
 
     # only one iteration is needed

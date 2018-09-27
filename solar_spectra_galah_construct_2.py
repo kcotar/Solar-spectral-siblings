@@ -33,7 +33,7 @@ solar_ref_flux_all = solar_ref[:, 1]
 solar_ref_wvl_all = solar_ref[:, 0]
 
 # data-table settings
-data_date = '20180222'
+data_date = '20180327'
 galah_param_file = 'sobject_iraf_'+dr_num+'_reduced_'+data_date+'.fits'
 
 # select ok objects

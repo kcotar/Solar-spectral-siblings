@@ -6,9 +6,9 @@ from scipy.interpolate import spline
 import astropy.coordinates as coord
 import astropy.units as un
 
-galah_data_input = '/home/klemen/data4_mount/'
-isochrones_dir = '/home/klemen/data4_mount/isochrones/padova_Gaia_DR2_Solar/'
-evoltracks_dir = '/home/klemen/data4_mount/isochrones/padova_Gaia_DR2_evolutionary_track/'
+galah_data_input = '/data4/cotar/'
+isochrones_dir = galah_data_input + 'isochrones/padova_Gaia_DR2_Solar/'
+evoltracks_dir = galah_data_input + 'isochrones/padova_Gaia_DR2_evolutionary_track/'
 
 # data-table settings
 data_date = '20180327'
@@ -22,17 +22,32 @@ wise_data = unique(wise_data, keys='sobject_id', keep='first')
 tmass_data = unique(tmass_data, keys='sobject_id', keep='first')
 apass_data = unique(apass_data, keys='sobject_id', keep='first')
 
-chdir('Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_multiabund_comb')
-gp_res = Table.read('solar_similarity_b1234_gp.csv')
-print len(gp_res)
+# chdir('Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_multiabund_comb')
+# gp_res = Table.read('solar_similarity_b1234_gp.csv')
+# print len(gp_res)
+# # predetermined objects
+# idx_run_params = 4.2
+# solar_like_sobjects = gp_res['sobject_id']
 
-# predetermined objects
-solar_like_sobjects = gp_res['sobject_id']
+idx_run_params = 8
+params_str = ['5100_4.54_0.00', '5200_4.53_0.00', '5300_4.51_0.00', '5400_4.48_0.00',
+              '5500_4.45_0.00', '5600_4.41_0.00', '5700_4.36_0.00', '5800_4.31_0.00',
+              '5900_4.25_0.00', '6000_4.18_0.00'][idx_run_params]
+multi_mag_thr = [5.7, 5.5, 5.3, 5.1,
+                 4.9, 4.6, 4.3, 3.9,
+                 3.6, 3.4][idx_run_params]
+
+chdir(galah_data_input + 'Distances_Step1_p0_SNRsamples0_ext4_oklinesonly_G20180327_C180325_refpar_'+params_str)
+sel_txt = open('final_selection_0.10.txt', 'r')
+solar_like_sobjects = sel_txt.read()
+sel_txt.close()
+solar_like_sobjects = [np.int64(sid) for sid in solar_like_sobjects.split(',')]
+print len(solar_like_sobjects)
 
 # cannon data subsets
 cannon_data = cannon_data[np.in1d(cannon_data['sobject_id'], solar_like_sobjects)]
-cannon_data = join(cannon_data, gp_res, join_type='left', keys='sobject_id')
-print len(cannon_data)
+# cannon_data = join(cannon_data, gp_res, join_type='left', keys='sobject_id')
+# print len(cannon_data)
 cannon_data = join(cannon_data, apass_data, join_type='left', keys='sobject_id')
 cannon_data = join(cannon_data, wise_data, keys='sobject_id', join_type='left')
 cannon_data = join(cannon_data, tmass_data, keys='sobject_id', join_type='left')
@@ -76,7 +91,7 @@ cannon_data['g_mean_mag_abs'] = Gmag_twin_abs
 
 # idx_mark = np.in1d(cannon_data['sobject_id'], [150208003201286,150427004801275,160130006301234,160327004601337,160524006601258,160916001801263,161118004701221,161119002801292,170117003101044,170205005401120,170515003101036,170516002101273,171001001601082,171207003601278,180129003101184])
 # idx_mark = np.in1d(cannon_data['sobject_id'], li_high_sid)
-# idx_mark = Gmag_twin_abs < 4.2
+# idx_mark = Gmag_twin_abs < multi_mag_thr
 idx_mark = cannon_data['parallax_error'] > cannon_data['parallax']*0.1
 
 plt.scatter(cannon_data['phot_g_mean_mag'], cannon_data['Vmag'], lw=0, s=3)
@@ -171,7 +186,7 @@ for mh_ini in np.unique(track_data['MHini']):
     # plt.xlim(0.1, 1.35)
 
     plt.ylim(2, 6)
-    plt.axhline(4.2, ls='--', c='black', alpha=0.3)
+    plt.axhline(multi_mag_thr, ls='--', c='black', alpha=0.3)
     plt.gca().invert_yaxis()
     plt.tight_layout()
     plt.legend()
@@ -215,7 +230,7 @@ for c_col in ['Teff_cannon', 'Logg_cannon', 'Fe_H_cannon']:
     plt.ylim(2, 6)
     plt.xlim(0.7, 1.35)
 
-    plt.axhline(4.2, ls='--', c='black', alpha=0.3)
+    plt.axhline(multi_mag_thr, ls='--', c='black', alpha=0.3)
     plt.gca().invert_yaxis()
     plt.tight_layout()
     plt.legend()
@@ -223,7 +238,7 @@ for c_col in ['Teff_cannon', 'Logg_cannon', 'Fe_H_cannon']:
     plt.savefig('mag_hr_gaia_bin-multi.png', dpi=300)
     plt.close()
 
-idx_mag_multiple = Gmag_twin_abs < 4.2
+idx_mag_multiple = Gmag_twin_abs < multi_mag_thr
 
 for g_p in ['astrometric_gof_al', 'astrometric_chi2_al', 'astrometric_excess_noise', 'astrometric_excess_noise_sig']:
     x_range = (np.nanpercentile(cannon_data[g_p], 1), np.nanpercentile(cannon_data[g_p], 99))
@@ -243,7 +258,7 @@ ax.append(plt.axes([0.08, 0.07, 0.90, 0.2]))
 
 cannon_data = cannon_data[cannon_data['parallax_error'] < cannon_data['parallax']*0.1]
 Gmag_twin_abs = cannon_data['phot_g_mean_mag'] - 2.5*np.log10(((1e3/cannon_data['parallax'])/10.)**2)
-idx_mag_multiple = Gmag_twin_abs < 4.2
+idx_mag_multiple = Gmag_twin_abs < multi_mag_thr
 
 # all photometric data together plot - and their distribution
 to_abs_mag = (-2.5*np.log10(((1e3/cannon_data['parallax'])/10.)**2)).reshape(-1, 1)

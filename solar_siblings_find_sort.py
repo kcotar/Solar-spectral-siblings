@@ -1,4 +1,4 @@
-from os import chdir
+from os import chdir, getcwd
 from solar_siblings_functions import *
 from scipy.stats import kde
 
@@ -56,9 +56,13 @@ cannon_params = Table.read(galah_data_input+'sobject_iraf_iDR2_180325_cannon.fit
 
 # define directory with simulations of metrics SNR functions
 # distance/similarity measurements
-snr_functions_dir = os.getcwd() + '/' + 'Distances_SNR_models_guesslike-alllines_gauss_oklinesonly' + '/'
-chdir('Distances_Step1_p0_SNRsamples0_ext0_oklinesonly_G20180327_C180325')
+# snr_functions_dir = getcwd() + '/' + 'Distances_SNR_models_guesslike-alllines_gauss_oklinesonly' + '/'
+# chdir('Distances_Step1_p0_SNRsamples0_ext0_oklinesonly_G20180327_C180325')
 combined_bands = False
+
+params_str = '6000_4.18_0.00'
+snr_functions_dir = galah_data_input + 'Distances_SNR_models_'+params_str+'_guesslike-alllines_gauss_oklinesonly' + '/'
+chdir(galah_data_input + 'Distances_Step1_p0_SNRsamples0_ext4_oklinesonly_G20180327_C180325_refpar_'+params_str)
 
 # snr_functions_dir = os.getcwd() + '/' + 'Distances_SNR_models_guesslike-alllines_gauss_oklinesonly_origsamp_nonoise' + '/'
 # chdir('Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_comb')

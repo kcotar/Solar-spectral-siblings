@@ -21,7 +21,7 @@ from astropy.modeling import models, fitting
 from copy import deepcopy
 
 OK_LINES_ONLY = True
-USE_SUBSAMPLE = False
+USE_SUBSAMPLE = True
 REF_SPECTRUM_PREPARE = False
 
 if REF_SPECTRUM_PREPARE:
@@ -45,16 +45,13 @@ else:
     every_nth_solar_pixel = np.array([8, 10, 12, 14])  # almost original sampling of the data - GP works much faster with this
 
 # input data
-if pc_name == 'gigli' or pc_name == 'klemen-P5K-E':
-    dr52_dir = '/media/storage/HERMES_REDUCED/dr5.3/'
-    galah_data_input = '/home/klemen/data4_mount/'
-    out_dir = ''
+dr52_dir = '/data4/cotar/dr5.3/'
+out_dir = '/data4/cotar/'
+galah_data_input = '/data4/cotar/'
+if pc_name == 'gigli' or pc_name == 'klemen-P5K-E' or pc_name == 'new-gigli':
     imp.load_source('helper_functions', '../Carbon-Spectra/helper_functions.py')
     imp.load_source('spectra_collection_functions', '../Carbon-Spectra/spectra_collection_functions.py')
-else:
-    dr52_dir = '/data4/cotar/dr5.3/'
-    out_dir = '/data4/cotar/'
-    galah_data_input = '/data4/cotar/'
+
 from helper_functions import *
 from spectra_collection_functions import *
 
@@ -99,6 +96,21 @@ if OK_LINES_ONLY:
         if line_name in problematic_lines:
             remove_linelist_rows.append(i_l_r)
     galah_linelist.remove_rows(remove_linelist_rows)
+
+
+def get_unlikesolar_data(ref_input_dir, suffix, every_nth=1, bands_together=True):
+    if bands_together:
+        solar_all = pd.read_csv(ref_input_dir + 'galah_ref_spectrum' + suffix + '_ext4_cannon_180325.txt', header=None,
+                                delimiter=' ', na_values='nan').values
+        solar_wvl = solar_all[:, 0]
+        solar_flx = solar_all[:, 1]
+    else:
+        pass
+    idx_finite = np.isfinite(solar_flx)
+    if every_nth <= 1:
+        return solar_wvl[idx_finite], solar_flx[idx_finite]
+    else:
+        return solar_wvl[idx_finite][::every_nth], solar_flx[idx_finite][::every_nth]
 
 
 def get_solar_data(solar_input_dir, suffix, every_nth=1, bands_together=True):

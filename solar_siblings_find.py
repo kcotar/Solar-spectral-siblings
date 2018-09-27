@@ -1,6 +1,6 @@
 from solar_siblings_functions import *
 import sys, getopt
-from os.path import isfile
+from os.path import isfile, getsize
 from time import time
 
 # -----------------------------------
@@ -9,15 +9,16 @@ from time import time
 # parse inputs from command line
 
 process_bands = np.array([1])  # in range 1...4
-read_ext = 0
+read_ext = 4
 process_obj_begin = 0
 process_obj_end = -1
+run_unlike_solar = False
 out_dir_suffix = ''
 
 argv = sys.argv
 if len(argv) > 1:
     # parse input options
-    opts, args = getopt.getopt(argv[1:], '', ['bands=', 'ext=', 'obj_beg=', 'obj_end=', 'dir_suffix='])
+    opts, args = getopt.getopt(argv[1:], '', ['bands=', 'ext=', 'obj_beg=', 'obj_end=', 'dir_suffix=', 'ref_params='])
     # set parameters, depending on user inputs
     print opts
     for o, a in opts:
@@ -32,14 +33,22 @@ if len(argv) > 1:
             process_obj_end = np.int64(a)
         if o == '--dir_suffix':
             out_dir_suffix = str(a)
+        if o == '--ref_params':
+            print 'NEW: running comparison on unlike solar reference spectrum'
+            # NEW: run the same process on objects that are not solar like
+            ref_params = str(a).split(',')
+            run_unlike_solar = True
+            teff_solar_c_MANUAL = np.float64(ref_params[0])
+            logg_solar_c_MANUAL = np.float64(ref_params[1])
+            feh_solar_c_MANUAL = np.float64(ref_params[2])
 
 d_wvl = 0.0
-save_plots = True
+save_plots = False
 output_differences = False  # so far available only for the first analysis step
 min_wvl = min_wvl[process_bands-1]
 max_wvl = max_wvl[process_bands-1]
 
-GP_compute = True
+GP_compute = False
 GP_per_element_analysis = True
 save_gp_params = True
 save_gp_median_spectra = True
@@ -48,20 +57,21 @@ save_gp_params_read_interpol = False
 n_threads = 10
 n_walkers = np.array([40, 40, 40, 40])[process_bands-1]
 n_steps = np.array([190, 190, 210, 230])[process_bands-1]
-# # TEST settings
-# n_threads = 5
-# n_walkers = np.array([20, 20, 20, 20])[process_bands-1]
-# n_steps = np.array([70, 70, 70, 120])[process_bands-1]
 
 # evaluate spectrum
-n_noise_samples = 1000
+n_noise_samples = 0
 noise_power = 0
 
 # reference solar spectra
 print 'Read reference GALAH Solar spectra'
-suffix_solar_ref = '_ext0_dateall_offset'
-solar_input_dir = galah_data_input+'Solar_data_dr53/'
-# solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix, every_nth=8)
+if not run_unlike_solar:
+    suffix_solar_ref = '_ext0_dateall_offset'
+    solar_input_dir = galah_data_input+'Solar_data_dr53/'
+    # solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix, every_nth=8)
+else:
+    unlike_ref_suffix = '_{:04.0f}_{:01.2f}_{:01.2f}'.format(teff_solar_c_MANUAL, logg_solar_c_MANUAL, feh_solar_c_MANUAL)
+    unlike_input_dir = galah_data_input + 'Galah_ref_spectra_dr53/'
+    out_dir_suffix += '_refpar' + unlike_ref_suffix
 
 # data-table settings
 data_date = '20180327'
@@ -93,10 +103,16 @@ feh_solar_c = np.nanmedian(cannon_param[idx_row_cannon]['Fe_H_cannon'])
 feh_solar_std_c = np.nanstd(cannon_param[idx_row_cannon]['Fe_H_cannon'])
 print 'Solar parameters - cannon:', teff_solar_c, '+/-', teff_solar_std_c, ',  ', logg_solar_c, '+/-', logg_solar_std_c, ',  ', feh_solar_c, '+/-', feh_solar_std_c
 
+# define different reference values for first rough parameter cut
+if run_unlike_solar:
+    teff_solar_c = teff_solar_c_MANUAL
+    logg_solar_c = logg_solar_c_MANUAL
+    feh_solar_c = feh_solar_c_MANUAL
+
 # manual parameter selection
-idx_solar_like = (np.abs(cannon_param['Teff_cannon'] - teff_solar_c) <= 250) & \
-                 (np.abs(cannon_param['Logg_cannon'] - logg_solar_c) <= 0.4) & \
-                 (np.abs(cannon_param['Fe_H_cannon'] - feh_solar_c) <= 0.3)
+idx_solar_like = (np.abs(cannon_param['Teff_cannon'] - teff_solar_c) <= 275) & \
+                 (np.abs(cannon_param['Logg_cannon'] - logg_solar_c) <= 0.5) & \
+                 (np.abs(cannon_param['Fe_H_cannon'] - feh_solar_c) <= 0.4)
 # preform flag filtering if needed - later selection is currently implemented
 idx_solar_like = np.logical_and(idx_solar_like, cannon_param['flag_cannon'] >= 0)  # no flagging at this point
 idx_solar_like = np.logical_and(idx_solar_like, np.bitwise_and(cannon_param['red_flag'], 64) == 0)  # only flats are taken out at this point in processing
@@ -105,7 +121,7 @@ idx_solar_like = np.logical_and(idx_solar_like, cannon_param['snr_c2_guess'] >= 
 idx_solar_like = np.logical_and(idx_solar_like, cannon_param['sobject_id'] > 140301000000000)  # leave out comissoning phase
 
 n_solar_like = np.sum(idx_solar_like)
-print 'Solar like by parameters:', n_solar_like
+print 'Spectra like by parameters:', n_solar_like
 
 # -----------------------------------
 # --------- Main program ------------
@@ -176,15 +192,16 @@ if save_gp_median_spectra:
 
 # predetermined objects in a text file
 list_file = 'final_selection_0.10.txt'
-solar_like_sobjects = []
-txt_o = open(list_file, 'r')
-for line in txt_o:
-    line_split = line.split(',')
-    sobj_vals = np.int64([l_s for l_s in line_split if len(l_s) > 5])
-    solar_like_sobjects.append(sobj_vals)
-txt_o.close()
-solar_like_sobjects = list(np.hstack(solar_like_sobjects))
-print 'Number of pre-selected objects:', len(solar_like_sobjects)
+if isfile(list_file):
+    solar_like_sobjects = []
+    txt_o = open(list_file, 'r')
+    for line in txt_o:
+        line_split = line.split(',')
+        sobj_vals = np.int64([l_s for l_s in line_split if len(l_s) > 5])
+        solar_like_sobjects.append(sobj_vals)
+    txt_o.close()
+    solar_like_sobjects = list(np.hstack(solar_like_sobjects))
+    print 'Number of pre-selected objects:', len(solar_like_sobjects)
 
 # solar_like_sobjects = [170206004201399, 160129004701355, 170911002101145,150412002601280,170219001601353,150409002601317,160422002001351,170507010101097,171227005801006]
 
@@ -244,7 +261,10 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
 
     # determine continuum-like pixels
     min_cont_level = 0.98
-    solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix_solar_ref, every_nth=4)
+    if not run_unlike_solar:
+        solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix_solar_ref, every_nth=4)
+    else:
+        solar_wvl, solar_flx = get_unlikesolar_data(unlike_input_dir, unlike_ref_suffix, every_nth=4)
     idx_cont_px = solar_flx > min_cont_level
     flx_all_abs_res = spectra_resample(flx_all_abs, wvl_all_abs, solar_wvl, k=1)
     idx_cont_px = np.logical_and(idx_cont_px, np.isfinite(flx_all_abs_res))
@@ -266,8 +286,12 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
         for i_c in range(len(process_bands)):
             evaluate_band = process_bands[i_c]
             # first prepare reference data
-            solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix_solar_ref,
-                                                  every_nth=every_nth_solar_pixel[evaluate_band - 1])
+            if not run_unlike_solar:
+                solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix_solar_ref,
+                                                      every_nth=every_nth_solar_pixel[evaluate_band - 1])
+            else:
+                solar_wvl, solar_flx = get_unlikesolar_data(unlike_input_dir, unlike_ref_suffix,
+                                                            every_nth=every_nth_solar_pixel[evaluate_band - 1])
             # band wvl mask
             idx_ref = get_band_mask(solar_wvl, evaluate_band)
             # generate mask of pixels used in comparison
@@ -420,8 +444,12 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
         for i_c in range(len(process_bands)):
             evaluate_band = process_bands[i_c]
             # first prepare reference data
-            solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix_solar_ref,
-                                                  every_nth=every_nth_solar_pixel[evaluate_band - 1])
+            if not run_unlike_solar:
+                solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix_solar_ref,
+                                                      every_nth=every_nth_solar_pixel[evaluate_band - 1])
+            else:
+                solar_wvl, solar_flx = get_unlikesolar_data(unlike_input_dir, unlike_ref_suffix,
+                                                            every_nth=every_nth_solar_pixel[evaluate_band - 1])
             # band wvl mask
             idx_ref = get_band_mask(solar_wvl, evaluate_band)
             # generate mask of pixels used in comparison
@@ -496,11 +524,11 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
         else:
             spectrum_distances[i_snr, :] = compute_distances(pix_spec, 0., pix_ref, d=noise_power)
 
-        if save_plots:
+        if save_plots and GP_compute:
             axSpectra.plot(pix_gp_predicted[i_snr, :], lw=0.2, alpha=0.01, c='blue')
         if output_differences and not GP_compute:
             csv_diff = open(file_out_diff, 'a')
-            if os.path.getsize(file_out_diff) == 0:  # size of file is zero -> add wavelength header info
+            if getsize(file_out_diff) == 0:  # size of file is zero -> add wavelength header info
                 csv_diff.write('0,'+','.join([str(sw) for sw in solar_wvl[idx_ref][abs_lines_cols]])+'\n')
             diff_csv_string = ','.join([str(pf) for pf in (pix_spec - pix_ref)])
             csv_diff.write(str(s_obj)+','+diff_csv_string+'\n')
@@ -519,7 +547,8 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
         axSpectra.plot(pix_spec, c='blue', lw=0.5)
         axDiff.axhline(y=0, c='black', lw=0.5)
         axDiff.plot(pix_ref - pix_spec, c='green', lw=0.5)
-        axDiff.plot(pix_ref - np.nanmean(pix_gp_predicted, axis=0), c='red', lw=0.5)
+        if GP_compute:
+            axDiff.plot(pix_ref - np.nanmean(pix_gp_predicted, axis=0), c='red', lw=0.5)
         axSpectra.set(ylim=(0.3, 1.1))
         axDiff.set(ylim=(-0.05, 0.05))
         axSpectra.set_title('SNR from abs lines: {:.2f}'.format(snr_guesslike))

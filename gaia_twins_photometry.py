@@ -5,6 +5,9 @@ from os import chdir
 from scipy.interpolate import spline
 import astropy.coordinates as coord
 import astropy.units as un
+from dustmaps.bayestar import BayestarWebQuery
+
+plt.rcParams['font.size'] = 15
 
 galah_data_input = '/data4/cotar/'
 isochrones_dir = galah_data_input + 'isochrones/padova_Gaia_DR2_Solar/'
@@ -22,27 +25,27 @@ wise_data = unique(wise_data, keys='sobject_id', keep='first')
 tmass_data = unique(tmass_data, keys='sobject_id', keep='first')
 apass_data = unique(apass_data, keys='sobject_id', keep='first')
 
-# chdir('Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_multiabund_comb')
-# gp_res = Table.read('solar_similarity_b1234_gp.csv')
-# print len(gp_res)
-# # predetermined objects
-# idx_run_params = 4.2
-# solar_like_sobjects = gp_res['sobject_id']
+chdir('Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_multiabund_comb')
+gp_res = Table.read('solar_similarity_b1234_gp.csv')
+print len(gp_res)
+# predetermined objects
+multi_mag_thr = 4.2
+solar_like_sobjects = gp_res['sobject_id']
 
-idx_run_params = 8
-params_str = ['5100_4.54_0.00', '5200_4.53_0.00', '5300_4.51_0.00', '5400_4.48_0.00',
-              '5500_4.45_0.00', '5600_4.41_0.00', '5700_4.36_0.00', '5800_4.31_0.00',
-              '5900_4.25_0.00', '6000_4.18_0.00'][idx_run_params]
-multi_mag_thr = [5.7, 5.5, 5.3, 5.1,
-                 4.9, 4.6, 4.3, 3.9,
-                 3.6, 3.4][idx_run_params]
-
-chdir(galah_data_input + 'Distances_Step1_p0_SNRsamples0_ext4_oklinesonly_G20180327_C180325_refpar_'+params_str)
-sel_txt = open('final_selection_0.10.txt', 'r')
-solar_like_sobjects = sel_txt.read()
-sel_txt.close()
-solar_like_sobjects = [np.int64(sid) for sid in solar_like_sobjects.split(',')]
-print len(solar_like_sobjects)
+# idx_run_params = 8
+# params_str = ['5100_4.54_0.00', '5200_4.53_0.00', '5300_4.51_0.00', '5400_4.48_0.00',
+#               '5500_4.45_0.00', '5600_4.41_0.00', '5700_4.36_0.00', '5800_4.31_0.00',
+#               '5900_4.25_0.00', '6000_4.18_0.00'][idx_run_params]
+# multi_mag_thr = [5.7, 5.5, 5.3, 5.1,
+#                  4.9, 4.6, 4.3, 3.9,
+#                  3.6, 3.4][idx_run_params]
+#
+# chdir(galah_data_input + 'Distances_Step1_p0_SNRsamples0_ext4_oklinesonly_G20180327_C180325_refpar_'+params_str)
+# sel_txt = open('final_selection_0.10.txt', 'r')
+# solar_like_sobjects = sel_txt.read()
+# sel_txt.close()
+# solar_like_sobjects = [np.int64(sid) for sid in solar_like_sobjects.split(',')]
+# print len(solar_like_sobjects)
 
 # cannon data subsets
 cannon_data = cannon_data[np.in1d(cannon_data['sobject_id'], solar_like_sobjects)]
@@ -80,14 +83,28 @@ cannon_data = join(cannon_data, gaia_data, keys='sobject_id', join_type='left')
 cannon_data['parsec'] = 1e3/cannon_data['parallax']
 # print cannon_data['sobject_id', 'phot_g_mean_mag', 'parsec', 'parallax', 'parallax_error']
 
+# query dustmap for those objects
+print 'Collecting E(B-V) for selected stars'
+coords = coord.SkyCoord(cannon_data['ra_1']*un.deg,
+                        cannon_data['dec_1']*un.deg,
+                        distance=cannon_data['parsec']*un.pc,
+                        frame='icrs')
+bayestar = BayestarWebQuery(version='bayestar2017')
+ebv = bayestar(coords, mode='median')
+print ebv
+print 'Median ebv:', np.nanmedian(ebv)
+
+plt.hist(ebv, range=(np.nanmin(ebv), np.nanmax(ebv)), bins=25)
+plt.savefig('ebv_hist.png', dpi=250)
+plt.close()
+
 # simulate parallax and Gmag as would be observe by the Gaia spacecraft
 parallax_sim = np.linspace(0.5, 15, 120)
 Gmag_sim = G_mean + 2.5*np.log10(((1e3/parallax_sim)/10.)**2)
 
-Gmag_twin_abs = cannon_data['phot_g_mean_mag'] - 2.5*np.log10(((1e3/cannon_data['parallax'])/10.)**2) #- cannon_data['a_g_val']
+Gmag_twin_abs = cannon_data['phot_g_mean_mag'] - 2.5*np.log10(((1e3/cannon_data['parallax'])/10.)**2)
+Gmag_twin_abs -= ebv * 3.384  # - cannon_data['a_g_val']
 Vmag_twin_abs = cannon_data['Vmag'] - 2.5*np.log10(((1e3/cannon_data['parallax'])/10.)**2)
-cannon_data['g_mean_mag_abs'] = Gmag_twin_abs
-
 
 # idx_mark = np.in1d(cannon_data['sobject_id'], [150208003201286,150427004801275,160130006301234,160327004601337,160524006601258,160916001801263,161118004701221,161119002801292,170117003101044,170205005401120,170515003101036,170516002101273,171001001601082,171207003601278,180129003101184])
 # idx_mark = np.in1d(cannon_data['sobject_id'], li_high_sid)
@@ -97,25 +114,26 @@ idx_mark = cannon_data['parallax_error'] > cannon_data['parallax']*0.1
 plt.scatter(cannon_data['phot_g_mean_mag'], cannon_data['Vmag'], lw=0, s=3)
 plt.xlabel('Gaia G')
 plt.ylabel('APASS V')
-plt.savefig('gaia_apass.png', dpi=300)
+plt.savefig('gaia_apass.png', dpi=250)
 plt.close()
 
 plt.scatter(cannon_data['phot_bp_mean_mag']-cannon_data['phot_rp_mean_mag'], cannon_data['Bmag']-cannon_data['Vmag'], lw=0, s=3)
 plt.xlabel('Gaia Gbp-Grp')
 plt.ylabel('APASS B-V')
-plt.savefig('gaia_apass_color.png', dpi=300)
+plt.savefig('gaia_apass_color.png', dpi=250)
 plt.close()
 
 
+plt.figure(figsize=(7, 5.5))
 plt.plot(Gmag_sim, parallax_sim, lw=1, color='C2', ls='--', label='Relation for the Sun')
-plt.plot(Gmag_sim-0.75, parallax_sim, lw=1, color='black', ls='--', label='Sun twins binary')
+plt.plot(Gmag_sim-0.75, parallax_sim, lw=1, color='C1', ls='--', label='Sun twin binary')
+plt.plot(Gmag_sim-1.2, parallax_sim, lw=1, color='C0', ls='--', label='Sun twin triple')
 plt.errorbar(cannon_data['phot_g_mean_mag'], cannon_data['parallax'], yerr=cannon_data['parallax_error'],
              fmt='.', ms=5, elinewidth=1, alpha=0.8, color='black', markeredgewidth=0, label='Gaia observations')
 plt.errorbar(cannon_data['phot_g_mean_mag'][idx_mark], cannon_data['parallax'][idx_mark], yerr=cannon_data['parallax_error'][idx_mark],
              fmt='.', ms=5, elinewidth=1, alpha=0.8, color='red', markeredgewidth=0, label='')
-plt.xlabel('Gaia G mean magnitude')
-
-plt.ylabel('Gaia parallax')
+plt.xlabel(u'${\it Gaia}$ G mean magnitude')
+plt.ylabel(u'${\it Gaia}$ parallax [mas]')
 plt.xlim((9, 14))
 plt.ylim((0.5, 13))
 plt.grid(color='black', ls='--', alpha=0.2)
@@ -169,21 +187,23 @@ for mh_ini in np.unique(track_data['MHini']):
     idx_mul = np.in1d(cannon_data['sobject_id'], multiples)
     idx_inc = np.in1d(cannon_data['sobject_id'], inconclusive)
 
-    plt.scatter(cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'], Gmag_twin_abs, s=4, lw=0, label='', c='black')
-    plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_mark], Gmag_twin_abs[idx_mark], lw=0, s=8, c='C3', label='Discarded')
-    plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_bin], Gmag_twin_abs[idx_bin], lw=0, s=8, c='C0', label='Binary')
-    plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_mul], Gmag_twin_abs[idx_mul], lw=0, s=8, c='C1', label='Triple')
-    plt.ylabel(r'${\it Gaia}$ G absolute magnitude')
-    plt.xlabel(r'G$_{bp}$ - G$_{rp}$')
-    plt.xlim(0.7, 1.35)
+    plt.figure(figsize=(7, 5.5))
 
-    # plt.scatter(cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'] - cannon_data['e_bp_min_rp_val'], Gmag_twin_abs, s=4, lw=0, label='', c='black')
-    # plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'] - cannon_data['e_bp_min_rp_val'])[idx_mark], Gmag_twin_abs[idx_mark], lw=0, s=8, c='C3', label='Discarded')
-    # plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'] - cannon_data['e_bp_min_rp_val'])[idx_bin], Gmag_twin_abs[idx_bin], lw=0, s=8, c='C0', label='Binary')
-    # plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'] - cannon_data['e_bp_min_rp_val'])[idx_mul], Gmag_twin_abs[idx_mul], lw=0, s=8, c='C1', label='Triple')
-    # plt.ylabel(r'${\it Gaia}$ G absolute magnitude - A$_G$')
-    # plt.xlabel(r'G$_{bp}$ - G$_{rp}$ - E(Bp-Rp)')
-    # plt.xlim(0.1, 1.35)
+    # plt.scatter(cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'], Gmag_twin_abs, s=4, lw=0, label='', c='black')
+    # plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_mark], Gmag_twin_abs[idx_mark], lw=0, s=8, c='C3', label='Discarded')
+    # plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_bin], Gmag_twin_abs[idx_bin], lw=0, s=8, c='C0', label='Binary')
+    # plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_mul], Gmag_twin_abs[idx_mul], lw=0, s=8, c='C1', label='Triple')
+    # plt.ylabel(u'Absolute ${\it Gaia}$ G magnitude')
+    # plt.xlabel(u'Colour index G$_{bp}$ - G$_{rp}$')
+    # plt.xlim(0.7, 1.35)
+
+    plt.scatter(cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'] - ebv, Gmag_twin_abs, s=4, lw=0, label='', c='black')
+    plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'] - ebv)[idx_mark], Gmag_twin_abs[idx_mark], lw=0, s=8, c='C3', label='Discarded')
+    plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'] - ebv)[idx_bin], Gmag_twin_abs[idx_bin], lw=0, s=8, c='C0', label='Binary')
+    plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'] - ebv)[idx_mul], Gmag_twin_abs[idx_mul], lw=0, s=8, c='C1', label='Triple')
+    plt.ylabel(r'${\it Gaia}$ G absolute magnitude - A$_g$')
+    plt.xlabel(r'G$_{bp}$ - G$_{rp}$ - E(B-V)')
+    plt.xlim(0.7, 1.35)
 
     plt.ylim(2, 6)
     plt.axhline(multi_mag_thr, ls='--', c='black', alpha=0.3)
@@ -191,8 +211,8 @@ for mh_ini in np.unique(track_data['MHini']):
     plt.tight_layout()
     plt.legend()
     # plt.show()
-    # plt.savefig('mag_hr_gaia_bin-multi_evol_mh{:.2f}_A_E.png'.format(mh_ini), dpi=300)
-    plt.savefig('mag_hr_gaia_bin-multi_evol_mh{:.2f}.png'.format(mh_ini), dpi=300)
+    plt.savefig('mag_hr_gaia_bin-multi_evol_mh{:.2f}_A_E.png'.format(mh_ini), dpi=300)
+    # plt.savefig('mag_hr_gaia_bin-multi_evol_mh{:.2f}.png'.format(mh_ini), dpi=300)
     plt.close()
 
 raise SystemExit
@@ -200,42 +220,46 @@ raise SystemExit
 for c_col in ['Teff_cannon', 'Logg_cannon', 'Fe_H_cannon']:
 
     # add isochrone
+    plt.figure(figsize=(7, 5.5))
     for i_feh in np.unique(iso_data['MHini']):
         idx_iso = np.logical_and(iso_data['MHini'] == i_feh, iso_data['Mini'] - iso_data['Mass'] < 0.1)
         plt.plot(iso_data['G_BPmag'][idx_iso] - iso_data['G_RPmag'][idx_iso], iso_data['Gmag'][idx_iso],
-                 # lw=0.75, label='[M/H] = {:.1f}'.format(i_feh))
-                 lw=0.5, label='', c='black')
+                 lw=0.75, label='[M/H] = {:.1f}'.format(i_feh))
+                 # lw=0.5, label='', c='black')
 
-    # plt.scatter(cannon_data['phot_bp_mean_mag']-cannon_data['phot_rp_mean_mag'], Gmag_twin_abs, s=4, lw=0, c=cannon_data[c_col], label='')
-    # plt.colorbar()
-    # plt.scatter((cannon_data['phot_bp_mean_mag']-cannon_data['phot_rp_mean_mag'])[idx_mark], Gmag_twin_abs[idx_mark], lw=0, s=7, label='', c='C3')
-    # plt.ylabel(r'{\it Gaia} G absolute magnitude')
-    # plt.xlabel(r'G$_{bp}$ - G$_{rp}$')
-    # plt.ylim(2, 6)
-    # plt.xlim(0.7, 1.35)
-
-    binaries = [140709003001184,150408005301259,150830004601175,160326002101077,160401004401051,160420003301342,160424002101194,160425001901273,160426004501395,160524004201306,160530003901026,160530003901054,160813002101314,160813004101136,161104002801361,161116003801308,161117004001161,170107004201309,170112003601298,170510007301226,170514003301011,170614004601055,170710002701354,150409002601317,150411004101331,150606005901339,160327006101355,160330002601095,160521004801353,160530005501077,160531005101256,160602001601307,161008002501018,161210004201315,161211003101387,161217002601138,161219005101228,170117003101044,170408004501048,170514003001180,170906003601357,170909002601291,171207003601278,171227003601367]
-    multiples = [140608002501303,140808002701338,140808003701104,141102002701267,150408005301116,150413003601344,150413005101096,160107003101157,160125004501038,160325002701048,160401003901215,160531006101153,161009005901171,161118002601376,161212002101397,161217004101075,161217004101234,170121002801292,170507007801271,170508002601001,170508004801312,170514002401099,170514003301001,170911003101383,140608002501303,140808003701104,150413003601344,160125004501038,160401003901215,161009005901171,161118002601376,161217004101234,170507007801271,170514002401099,170911003101383]
-    inconclusive = [161009002601018]
-    idx_bin = np.in1d(cannon_data['sobject_id'], binaries)
-    idx_mul = np.in1d(cannon_data['sobject_id'], multiples)
-    idx_inc = np.in1d(cannon_data['sobject_id'], inconclusive)
-    plt.scatter(cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'], Gmag_twin_abs, s=4, lw=0, label='', c='black')
-    plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_mark], Gmag_twin_abs[idx_mark], lw=0, s=8, c='C3', label='Discarded')
-    plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_bin], Gmag_twin_abs[idx_bin], lw=0, s=8, c='C0', label='Binary')
-    plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_mul], Gmag_twin_abs[idx_mul], lw=0, s=8, c='C1', label='Triple')
-    # plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_inc], Gmag_twin_abs[idx_inc], lw=0, s=7, c='C1', label='Inconclusive')
-    plt.ylabel(r'${\it Gaia}$ G absolute magnitude')
-    plt.xlabel(r'G$_{bp}$ - G$_{rp}$')
+    plt.scatter(cannon_data['phot_bp_mean_mag']-cannon_data['phot_rp_mean_mag'], Gmag_twin_abs, s=4, lw=0, c=cannon_data[c_col], label='')
+    plt.colorbar()
+    plt.scatter((cannon_data['phot_bp_mean_mag']-cannon_data['phot_rp_mean_mag'])[idx_mark], Gmag_twin_abs[idx_mark], lw=0, s=7, label='', c='C3')
+    plt.ylabel(u'Absolute ${\it Gaia}$ G magnitude')
+    plt.xlabel(u'Colour index G$_{BP}$ - G$_{RP}$')
+    plt.yticks([6, 5.5, 5, 4.5, 4, 3.5, 3, 2.5, 2], ['6', '', '5', '', '4', '', '3', '', '2'])
+    plt.xticks([0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3], ['', '0.8', '', '1.0', '', '1.2', ''])
     plt.ylim(2, 6)
     plt.xlim(0.7, 1.35)
+
+    # binaries = [140709003001184,150408005301259,150830004601175,160326002101077,160401004401051,160420003301342,160424002101194,160425001901273,160426004501395,160524004201306,160530003901026,160530003901054,160813002101314,160813004101136,161104002801361,161116003801308,161117004001161,170107004201309,170112003601298,170510007301226,170514003301011,170614004601055,170710002701354,150409002601317,150411004101331,150606005901339,160327006101355,160330002601095,160521004801353,160530005501077,160531005101256,160602001601307,161008002501018,161210004201315,161211003101387,161217002601138,161219005101228,170117003101044,170408004501048,170514003001180,170906003601357,170909002601291,171207003601278,171227003601367]
+    # multiples = [140608002501303,140808002701338,140808003701104,141102002701267,150408005301116,150413003601344,150413005101096,160107003101157,160125004501038,160325002701048,160401003901215,160531006101153,161009005901171,161118002601376,161212002101397,161217004101075,161217004101234,170121002801292,170507007801271,170508002601001,170508004801312,170514002401099,170514003301001,170911003101383,140608002501303,140808003701104,150413003601344,160125004501038,160401003901215,161009005901171,161118002601376,161217004101234,170507007801271,170514002401099,170911003101383]
+    # inconclusive = [161009002601018]
+    # idx_bin = np.in1d(cannon_data['sobject_id'], binaries)
+    # idx_mul = np.in1d(cannon_data['sobject_id'], multiples)
+    # idx_inc = np.in1d(cannon_data['sobject_id'], inconclusive)
+    # plt.figure(figsize=(7, 5.5))
+    # plt.scatter(cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'], Gmag_twin_abs, s=4, lw=0, label='', c='black')
+    # plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_mark], Gmag_twin_abs[idx_mark], lw=0, s=8, c='C3', label='Discarded')
+    # plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_bin], Gmag_twin_abs[idx_bin], lw=0, s=8, c='C0', label='Binary')
+    # plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_mul], Gmag_twin_abs[idx_mul], lw=0, s=8, c='C1', label='Triple')
+    # # plt.scatter((cannon_data['phot_bp_mean_mag'] - cannon_data['phot_rp_mean_mag'])[idx_inc], Gmag_twin_abs[idx_inc], lw=0, s=7, c='C1', label='Inconclusive')
+    # plt.ylabel(u'Absolute ${\it Gaia}$ G magnitude')
+    # plt.xlabel(u'Colour index G$_{BP}$ - G$_{RP}$')
+    # plt.ylim(2, 6)
+    # plt.xlim(0.7, 1.35)
 
     plt.axhline(multi_mag_thr, ls='--', c='black', alpha=0.3)
     plt.gca().invert_yaxis()
     plt.tight_layout()
     plt.legend()
-    # plt.savefig('mag_hr_gaia_' + c_col + '.png', dpi=300)
-    plt.savefig('mag_hr_gaia_bin-multi.png', dpi=300)
+    plt.savefig('mag_hr_gaia_' + c_col + '.png', dpi=250)
+    # plt.savefig('mag_hr_gaia_bin-multi.png', dpi=250)
     plt.close()
 
 idx_mag_multiple = Gmag_twin_abs < multi_mag_thr
@@ -250,11 +274,12 @@ for g_p in ['astrometric_gof_al', 'astrometric_chi2_al', 'astrometric_excess_noi
 
 print ','.join([str(s) for s in cannon_data[idx_mag_multiple]['sobject_id']])
 
+plt.rcParams['font.size'] = 15
 
-plt.figure(1, figsize=(8, 6))
+plt.figure(1, figsize=(7, 6))
 ax = list([])
-ax.append(plt.axes([0.08, 0.27, 0.90, 0.71]))
-ax.append(plt.axes([0.08, 0.07, 0.90, 0.2]))
+ax.append(plt.axes([0.12, 0.28, 0.87, 0.70]))
+ax.append(plt.axes([0.12, 0.09, 0.87, 0.19]))
 
 cannon_data = cannon_data[cannon_data['parallax_error'] < cannon_data['parallax']*0.1]
 Gmag_twin_abs = cannon_data['phot_g_mean_mag'] - 2.5*np.log10(((1e3/cannon_data['parallax'])/10.)**2)
@@ -301,17 +326,17 @@ import matplotlib.patches as mpatches
 red_patch = mpatches.Patch(color='red')
 ax[0].legend([mpatches.Patch(color='C1'), mpatches.Patch(color='C2')],
            ['Multiple', 'Single'], loc=2)
-ax[0].set(ylim=(0, 6.5), xlim=(-1, 44), ylabel='Magnitude',
-          xticks=np.arange(len(c_plot))*3 + 0.5, xticklabels=['' for i in range(len(c_col))])
+ax[0].set(ylim=(0, 6.5), xlim=(-1, 44), ylabel=u'Absolute magnitude\n ',
+          xticks=np.arange(len(c_plot))*3 + 0.5, xticklabels=['' for i in range(len(c_plot))])
 ax[0].invert_yaxis()
 ax[0].grid(ls='--', color='black', alpha=0.2)
 
 ax[1].scatter(np.arange(len(c_plot))*3 + 0.5, median_2-median_1, lw=0, s=10, c='black')
-ax[1].set(ylim=(0.8, 1.0), xlim=(-1, 44), ylabel='Difference', xlabel='Photometric filter',
+ax[1].set(ylim=(0.8, 1.0), xlim=(-1, 44), ylabel=u'Difference', xlabel=u'Photometric filter',
           xticks=np.arange(len(c_plot)) * 3 + 0.5,
           xticklabels=['B', 'V', "g'", "r'", "i'", 'G', r'G$_{BP}$', r'G$_{RP}$', 'J', 'H', 'K', 'W1', 'W2', 'W3', 'W4'],
           yticks=[0.85, 0.95])
 ax[1].grid(ls='--', color='black', alpha=0.2)
 
-plt.savefig('multi_mag_plot.png', dpi=300)
+plt.savefig('multi_mag_plot.png', dpi=250)
 plt.close()

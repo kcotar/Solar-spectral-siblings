@@ -45,17 +45,16 @@ else:
     every_nth_solar_pixel = np.array([8, 10, 12, 14])  # almost original sampling of the data - GP works much faster with this
 
 # input data
-dr52_dir = '/data4/cotar/dr5.3/'
-out_dir = '/data4/cotar/'
-galah_data_input = '/data4/cotar/'
-if pc_name == 'gigli' or pc_name == 'klemen-P5K-E' or pc_name == 'new-gigli':
-    imp.load_source('helper_functions', '../Carbon-Spectra/helper_functions.py')
-    imp.load_source('spectra_collection_functions', '../Carbon-Spectra/spectra_collection_functions.py')
+dr52_dir = '/shared/ebla/cotar/dr5.3/'
+out_dir = '/shared/data-camelot/cotar/'
+galah_data_input = '/shared/ebla/cotar/'
+imp.load_source('helper_functions', '../Carbon-Spectra/helper_functions.py')
+imp.load_source('spectra_collection_functions', '../Carbon-Spectra/spectra_collection_functions.py')
 
 from helper_functions import *
 from spectra_collection_functions import *
 
-galah_linelist = Table.read(galah_data_input + 'GALAH_Cannon_linelist_newer.csv')
+galah_linelist = Table.read(galah_data_input + 'GALAH_Cannon_linelist_newer_H.csv')
 # define lines with clearly visible telluric contamination between different night
 problematic_lines = ['Ti5689.46',
                      'Si5690.425',

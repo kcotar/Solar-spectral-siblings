@@ -1,4 +1,4 @@
-from solar_siblings_functions import *
+from solar_s/home/klemen/gigli_mount/Aquarius_membershipiblings_functions import *
 
 
 suffix_solar_ref = '_ext0_dateall_offset'

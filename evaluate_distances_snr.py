@@ -8,12 +8,11 @@ from time import time
 pc_name = gethostname()
 
 # input data
-dr52_dir = '/data4/cotar/dr5.3/'
-out_dir = '/data4/cotar/'
-galah_data_input = '/data4/cotar/'
-if pc_name == 'gigli' or pc_name == 'klemen-P5K-E' or pc_name == 'new-gigli':
-    imp.load_source('helper_functions', '../Carbon-Spectra/helper_functions.py')
-    imp.load_source('spectra_collection_functions', '../Carbon-Spectra/spectra_collection_functions.py')
+dr52_dir = '/shared/ebla/cotar/dr5.3/'
+out_dir = '/shared/data-camelot/cotar/'
+galah_data_input = '/shared/ebla/cotar/'
+imp.load_source('helper_functions', '../Carbon-Spectra/helper_functions.py')
+imp.load_source('spectra_collection_functions', '../Carbon-Spectra/spectra_collection_functions.py')
 
 from helper_functions import *
 from spectra_collection_functions import *
@@ -25,7 +24,7 @@ from spectra_collection_functions import *
 d_wvl = 0.0
 save_plots = False
 
-run_unlike_solar = True
+run_unlike_solar = False
 
 teff_solar_c_MANUAL = [6000, 5900, 5800, 5700, 5600, 5500, 5400, 5300, 5200, 5100][2]
 logg_solar_c_MANUAL = [4.18, 4.25, 4.31, 4.36, 4.41, 4.45, 4.48, 4.51, 4.53, 4.54][2]
@@ -73,6 +72,7 @@ if not USE_SUBSAMPLE:
 if n_noise_samples == 1:
     new_dir += '_nonoise'
 
+new_dir += '_withH'
 move_to_dir(out_dir + new_dir)
 
 observe_bands = list([1, 2, 3, 4])

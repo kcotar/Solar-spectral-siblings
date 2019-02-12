@@ -26,11 +26,15 @@ save_plots = False
 
 run_unlike_solar = False
 
-teff_solar_c_MANUAL = [6000, 5900, 5800, 5700, 5600, 5500, 5400, 5300, 5200, 5100][2]
-logg_solar_c_MANUAL = [4.18, 4.25, 4.31, 4.36, 4.41, 4.45, 4.48, 4.51, 4.53, 4.54][2]
-feh_solar_c_MANUAL = 0.0
-unlike_ref_suffix = '_{:04.0f}_{:01.2f}_{:01.2f}'.format(teff_solar_c_MANUAL, logg_solar_c_MANUAL, feh_solar_c_MANUAL)
-unlike_input_dir = galah_data_input + 'Galah_ref_spectra_dr53/'
+if run_unlike_solar:
+    id_unlike = 2
+    teff_solar_c_MANUAL = [6000, 5900, 5800, 5700, 5600, 5500, 5400, 5300, 5200, 5100][id_unlike]
+    logg_solar_c_MANUAL = [4.18, 4.25, 4.31, 4.36, 4.41, 4.45, 4.48, 4.51, 4.53, 4.54][id_unlike]
+    feh_solar_c_MANUAL = 0.0
+    unlike_ref_suffix = '_{:04.0f}_{:01.2f}_{:01.2f}'.format(teff_solar_c_MANUAL, logg_solar_c_MANUAL, feh_solar_c_MANUAL)
+    unlike_input_dir = galah_data_input + 'Galah_ref_spectra_dr53/'
+else:
+    unlike_ref_suffix = ''
 
 
 # evaluate spectrum
@@ -72,7 +76,7 @@ if not USE_SUBSAMPLE:
 if n_noise_samples == 1:
     new_dir += '_nonoise'
 
-new_dir += '_withH'
+new_dir += '_withHwings'
 move_to_dir(out_dir + new_dir)
 
 observe_bands = list([1, 2, 3, 4])

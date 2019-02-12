@@ -9,8 +9,9 @@ pc_name = gethostname()
 dr_ver = 'dr5.3'
 dr_num = dr_ver[2]+dr_ver[4]
 
-dr_dir = '/data4/cotar/'+dr_ver+'/'
-galah_data_input = '/data4/cotar/'
+dr_dir = '/shared/ebla/cotar/'+dr_ver+'/'
+galah_data_input = '/shared/ebla/cotar/'
+results_dir = '/shred/data-camelot/cotar/'
 # input data
 if pc_name == 'gigli' or pc_name == 'klemen-P5K-E' or pc_name=='new-gigli':
     imp.load_source('helper_functions', '../Carbon-Spectra/helper_functions.py')
@@ -20,7 +21,7 @@ from helper_functions import get_spectra_dr52, spectra_normalize, spectra_resamp
 # ---------------------
 # FUNCTIONS
 # ---------------------
-def read_and_prepare_twilight_spectra(s_obj):
+def read_and_prepare_spectra(s_obj):
     print s_obj  # , dr_dir, reduce_bands
     # read all spectral bands
     flux, wvl = get_spectra_dr52(str(s_obj), bands=reduce_bands, root=dr_dir, extension=read_ext, individual=False)
@@ -65,21 +66,29 @@ def read_and_prepare_twilight_spectra(s_obj):
 # ---------------------
 # SETTINGS
 # ---------------------
-teff_solar_c_MANUAL = 6000.
-logg_solar_c_MANUAL = 4.18
+i_man_sel = 9
+# iDR2
+# teff_solar_c_MANUAL = [5100, 5200, 5300, 5400, 5500, 5600, 5700, 5800, 5900, 6000][i_man_sel]
+# logg_solar_c_MANUAL = [4.54, 4.53, 4.51, 4.48, 4.45, 4.41, 4.36, 4.31, 4.25, 4.18][i_man_sel]
+# iDR3
+teff_solar_c_MANUAL = [5100, 5200, 5300, 5400, 5500, 5600, 5700, 5800, 5900, 6000][i_man_sel]
+logg_solar_c_MANUAL = [4.55, 4.53, 4.51, 4.48, 4.46, 4.43, 4.40, 4.37, 4.34, 4.30][i_man_sel]
+
 feh_solar_c_MANUAL = 0.0
 d_teff = 60
 d_logg = 0.05
 d_feh = 0.05
 unlike_ref_suffix = '_{:04.0f}_{:01.2f}_{:01.2f}'.format(teff_solar_c_MANUAL, logg_solar_c_MANUAL, feh_solar_c_MANUAL)
 
-
 # data-table settings
 print 'Reading GALAH and Cannon parameters and data'
 data_date = '20180327'
 galah_param_file = 'sobject_iraf_'+dr_num+'_reduced_'+data_date+'.fits'
-cannon_date = '180325'
-cannon_param_file = 'sobject_iraf_iDR2_'+cannon_date+'_cannon.fits'
+# cannon_date = '180325'
+# cannon_param_file = 'sobject_iraf_iDR2_'+cannon_date+'_cannon.fits'
+cannon_date = '181221'
+cannon_param_file = 'GALAH_iDR3_v1_'+cannon_date+'_cannon.fits'
+
 
 # reference solar spectra
 print 'Read reference Solar spectra'
@@ -110,7 +119,7 @@ reduce_bands = list([1, 2, 3, 4])
 n_multi = 10
 pool = Pool(processes=n_multi)
 sobjects = cannon_param[idx_cannon_read]['sobject_id']
-galah_twilight_spectra_list = pool.map(read_and_prepare_twilight_spectra, sobjects)
+galah_twilight_spectra_list = pool.map(read_and_prepare_spectra, sobjects)
 pool.close()
 
 # define final wavelengths of the twilight spectrum

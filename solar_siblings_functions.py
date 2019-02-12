@@ -21,7 +21,7 @@ from astropy.modeling import models, fitting
 from copy import deepcopy
 
 OK_LINES_ONLY = True
-USE_SUBSAMPLE = True
+USE_SUBSAMPLE = False
 REF_SPECTRUM_PREPARE = False
 
 if REF_SPECTRUM_PREPARE:
@@ -46,7 +46,7 @@ else:
 
 # input data
 dr52_dir = '/shared/ebla/cotar/dr5.3/'
-out_dir = '/shared/data-camelot/cotar/'
+out_dir = '/shared/data-camelot/cotar/_Multiples_binaries_results_iDR3/'
 galah_data_input = '/shared/ebla/cotar/'
 imp.load_source('helper_functions', '../Carbon-Spectra/helper_functions.py')
 imp.load_source('spectra_collection_functions', '../Carbon-Spectra/spectra_collection_functions.py')
@@ -97,9 +97,9 @@ if OK_LINES_ONLY:
     galah_linelist.remove_rows(remove_linelist_rows)
 
 
-def get_unlikesolar_data(ref_input_dir, suffix, every_nth=1, bands_together=True):
+def get_unlikesolar_data(ref_input_dir, suffix, every_nth=1, bands_together=True, cannon_date='180325'):
     if bands_together:
-        solar_all = pd.read_csv(ref_input_dir + 'galah_ref_spectrum' + suffix + '_ext4_cannon_180325.txt', header=None,
+        solar_all = pd.read_csv(ref_input_dir + 'galah_ref_spectrum' + suffix + '_ext4_cannon_' + cannon_date + '.txt', header=None,
                                 delimiter=' ', na_values='nan').values
         solar_wvl = solar_all[:, 0]
         solar_flx = solar_all[:, 1]
@@ -156,13 +156,13 @@ def get_used_elements():
 
 def kernel_params_ok(p):
     amp, rad, amp2, rad2, cont_norm = p
-    if not 1e-7 < amp < 1e-3:
+    if not -7. < amp2 < -2.:
         return False
-    if not 1e-4 < rad < 1e-1:
+    if not -4 < rad < -1:
         return False
-    if not 1e-7 < amp2 < 1e-3:
+    if not -7. < amp2 < -2.:
         return False
-    if not 0.01 < rad2 < 50.:
+    if not 1. < rad2 < 100.:
         return False
     if not 0.98 < cont_norm < 1.02:
         return False
@@ -190,13 +190,12 @@ def spectrum_offset_norm(params, f, norm_only=True):
 
 def get_kernel(p, add_cont=True):
     amp, rad, amp2, rad2 = p
-    kernel = kernel_noise(amp, rad)
+    kernel = kernel_noise(10.**amp, 10.**rad)
     if add_cont:
-        kernel += kernel_cont(amp2, rad2)
+        kernel += kernel_cont(10.**amp2, rad2)
     return kernel
 
 
-from george.modeling import Model
 class mean_flux_class(Model):
     def __init__(self, f):
         self.f = deepcopy(f)
@@ -215,77 +214,109 @@ def lnprob_gp(params, f_ref, f_obs, wvl, data_std, spectrum_off_norm=True):
     # evaluate selected parameters
     if kernel_params_ok(params):
 
-        gp = george.GP(get_kernel(params[:-1]))
+        gp = george.GP(get_kernel(params[:4]))
         if data_std is not None:
             gp.compute(wvl, data_std)
         else:
             gp.compute(wvl)
 
-        gp_lnp = None
-        gp_lnp = gp.lnlikelihood(f_obs - f_ref)
-
         if spectrum_off_norm:
-            f_obs_new = spectrum_offset_norm(params[-1:], f_obs)
-            idx_cont_like = np.logical_and(np.abs(f_ref - 1.) < 0.02, np.abs(f_obs - 1.) < 0.05)
-            median_diff = (np.median(f_obs_new[idx_cont_like]) - np.median(f_ref[idx_cont_like]))
-            return gp_lnp + np.log(1./np.abs(median_diff)) * 4.
+            gp_lnp = gp.lnlikelihood(spectrum_offset_norm(params[4], f_obs) - f_ref)
+            # f_obs_new = spectrum_offset_norm(params[4], f_obs)
+            # idx_cont_like = np.logical_and(np.abs(f_ref - 1.) < 0.02, np.abs(f_obs - 1.) < 0.05)
+            # median_diff = (np.median(f_obs_new[idx_cont_like]) - np.median(f_ref[idx_cont_like]))
+            # gp_lnp -= np.log(np.abs(median_diff)) * 10.
         else:
-            return gp_lnp
+            gp_lnp = gp.lnlikelihood(f_obs - f_ref)
+        return gp_lnp
 
     else:
         return -np.inf
 
 
-def fit_gp_kernel(init_guess, init_guess_2, ref_data, obs_data, wvl, nwalkers=32, n_threds=1, n_burn=75, data_std=None,
-                  n_per_burn=10, exit_lnp=1.5, normal_dist_guess=True):
+def fit_gp_kernel(init_guess, init_guess_2, ref_data, obs_data, wvl,
+                  nwalkers=32, n_threds=1, n_burn=75, n_run=100, data_std=None,
+                  n_per_burn=10, exit_lnp=1.5, normal_dist_guess=True,
+                  save_plots=True, path='plot.png'):
     # compute number of burn steps
-    n_burn_steps = np.int32(n_burn/n_per_burn)
+    n_burn_steps = np.ceil(n_burn/n_per_burn)
     # data to be fitted handling
     ndim = len(init_guess)
     data_diff = ref_data - obs_data
 
+    burn_walkers_multi = 4.
+    nwalkers_burn = int(nwalkers * burn_walkers_multi)
     given_guess = np.array(init_guess)
     # add random amount of noise to the data
     if normal_dist_guess:
         # standard normal distribution of initial values
         perc_rand = 20.
-        p0 = [given_guess + given_guess * np.random.randn(ndim) * perc_rand/100. for i_w in range(nwalkers)]
+        p0 = [given_guess + given_guess * np.random.randn(ndim) * perc_rand/100. for i_w in range(nwalkers_burn)]
     else:
         # uniform distribution of initial values
         guess_low = np.array(init_guess)
         guess_hig = np.array(init_guess_2)
         p0 = list([])
-        for i_w in range(nwalkers):
+        for i_w in range(nwalkers_burn):
             p0_new = guess_low + np.random.rand(ndim) * (guess_hig - guess_low)
             p0.append(p0_new)
 
-    # initialize emcee sampler
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob_gp, threads=n_threds, args=(ref_data, obs_data, wvl, data_std))
+    # -----------------------------
+    # First burn-in step
+    # -----------------------------
 
-    print(' Running burn-in')
+    # initialize emcee sampler
+    sampler = emcee.EnsembleSampler(nwalkers_burn, ndim, lnprob_gp,
+                                    threads=n_threds, args=(ref_data, obs_data, wvl, data_std))
+
+    print(' Running burn-in (walkers:{:.0f}, length:{:.0f})'.format(nwalkers_burn, n_burn))
     time_1 = time()
-    for i_b in range(n_burn_steps):
-        print '  Run:', i_b+1
-        if i_b == 0:
-            p0, lnp, _ = sampler.run_mcmc(p0, n_per_burn)
-        else:
-            p0, lnp, _ = sampler.run_mcmc(None, n_per_burn)
-        # test exit conditions
-        if (lnp/len(data_diff) > exit_lnp).all():
-            break
+    p0, lnp, _ = sampler.run_mcmc(p0, n_burn)
+    # for i_b in range(n_burn_steps):
+    #     print '  Run:', i_b+1
+    #     if i_b == 0:
+    #         p0, lnp, _ = sampler.run_mcmc(p0, n_per_burn)
+    #     else:
+    #         p0, lnp, _ = sampler.run_mcmc(None, n_per_burn)
+    #     # test exit conditions
+    #     if (lnp/len(data_diff) > exit_lnp).all():
+    #         break
 
     time_2 = time()
     print '  {:.1f} min'.format((time_2-time_1)/60.)
-
-    # print(' Running production')
-    # p0 = [p + 1e-8 * np.random.randn(ndim) for i_w in range(nwalkers)]
-    # p0, ln
-    # p, _ = sampler.run_mcmc(p0, 500)
-    # time_3 = time()
-    # print '  {:.1f} min'.format((time_3 - time_2) / 60.)
-
     if n_threds > 1:
         sampler.pool.close()
+
+    # save lnprobability tracks as plot if requested
+    if save_plots:
+        walkers_prob = sampler.lnprobability
+        for i_w in range(walkers_prob.shape[0]):
+            plt.plot(walkers_prob[i_w, :], lw=0.3)
+        walkers_prob = walkers_prob.flatten()  # without this correction numpy
+        walkers_prob = walkers_prob[np.isfinite(walkers_prob)]  # percentile may return incorrect -inf value
+        plt.ylim((np.percentile(walkers_prob, 1.), np.percentile(walkers_prob, 99.5)))
+        plt.savefig(path, dpi=250)
+        plt.close()
+
+    # -----------------------------
+    # Second production step
+    # -----------------------------
+
+    # Select the best walkers
+    idx_best = np.argsort(lnp)[::-1][:nwalkers]
+    p0 = p0[idx_best]
+    # initialize emcee sampler
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob_gp,
+                                    threads=n_threds, args=(ref_data, obs_data, wvl, data_std))
+
+    print(' Running production (walkers:{:.0f}, length:{:.0f})'.format(nwalkers, n_run))
+    time_1 = time()
+    p0, lnp, _ = sampler.run_mcmc(p0, n_run)
+    time_2 = time()
+    print '  {:.1f} min'.format((time_2 - time_1) / 60.)
+    if n_threds > 1:
+        sampler.pool.close()
+
     return sampler, p0, lnp
 
 

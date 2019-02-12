@@ -5,26 +5,34 @@ from os import chdir
 import astropy.coordinates as coord
 import astropy.units as un
 
-galah_data_input = '/home/klemen/data4_mount/'
+galah_data_input = '/shared/ebla/cotar/'
+results_input = '/shared/data-camelot/cotar/'
 
 # data-table settings
-data_date = '20180327'
-cannon_param_file = 'sobject_iraf_iDR2_180325_cannon.fits'
+# cannon_param_file = 'sobject_iraf_iDR2_180325_cannon.fits'
+# cannon_version = 'Cannon iDR2'
+# suffix = '_ebv_c2'
+
+cannon_param_file = 'GALAH_iDR3_v1_181221_cannon.fits'
+cannon_version = 'SME iDR3'
+suffix = '_ebv_c3'
 
 cannon_data = Table.read(galah_data_input+cannon_param_file)
-cannon_data = cannon_data[cannon_data['sobject_id']>140301000000000]
+galah_data = Table.read(galah_data_input+'sobject_iraf_53_reduced_20180327.fits')['sobject_id', 'snr_c1_guess', 'snr_c2_guess', 'snr_c3_guess', 'snr_c4_guess']
+cannon_data = cannon_data[cannon_data['sobject_id'] > 140301000000000]
+cannon_data = join(cannon_data, galah_data, keys='sobject_id', join_type='left')
 ra_dec_all = coord.ICRS(ra=cannon_data['ra']*un.deg, dec=cannon_data['dec']*un.deg)
 
-chdir('Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_multiabund_comb')
-gp_res = Table.read('solar_similarity_b1234_gp.csv')
+chdir(results_input + 'Distances_Step1_p0_SNRsamples0_ext0_oklinesonly_G20180327_C180325_withH')
 
-# predetermined objects
-solar_like_sobjects = gp_res['sobject_id']
+envel_val = '05'
+sel_txt = open('final_selection_'+envel_val+'_envelope.txt', 'r')
+solar_like_sobjects = sel_txt.read()
+sel_txt.close()
+solar_like_sobjects = [np.int64(sid) for sid in solar_like_sobjects.split(',')]
 
 # cannon data subsets
 cannon_data = cannon_data[np.in1d(cannon_data['sobject_id'], solar_like_sobjects)]
-cannon_data = join(cannon_data, gp_res, join_type='left')
-
 
 def _prepare_hist_data(d, bins, range, norm=True):
     heights, edges = np.histogram(d, bins=bins, range=range)
@@ -34,7 +42,7 @@ def _prepare_hist_data(d, bins, range, norm=True):
     return edges[:-1], heights, width
 
 # sid_triples = [140608002501303,140808003701104,150413003601344,160125004501038,160401003901215,161009005901171,161118002601376,161217004101234,170507007801271,170514002401099,170911003101383]
-idx_triple = np.in1d(cannon_data['sobject_id'], sid_triples)
+# idx_triple = np.in1d(cannon_data['sobject_id'], sid_triples)
 # make histogram plots for parameters
 plot_col = ['Teff_cannon', 'Logg_cannon', 'Fe_H_cannon']
 x_label = ['Teff [K]', 'Logg [dex]', '[Fe/H] [dex]']
@@ -44,7 +52,7 @@ for i_p in range(len(plot_col)):
     plot_vals = cannon_data[plot_col[i_p]][idx_valid_param]
     plot_vals_median = np.median(plot_vals)
     plt.hist(plot_vals, bins=75, color='black', alpha=0.33)
-    # plt.hist(cannon_data[plot_col[i_p]][idx_triple], bins=50, color='blue', alpha=0.33)
+    # plt.hist(cannon_data[plot_col[i_p]][idx_bad], bins=50, color='blue', alpha=0.33)
     plt.axvline(x=solar_val[i_p], color='black', ls='--', lw=2.5)
     plt.axvline(x=plot_vals_median, color='red', ls='--', lw=2.5)
     plt.title('All: {:.0f}    Unflagged: {:.0f}    Median: {:.2f}    Difference: {:.2f}'.format(len(solar_like_sobjects), len(plot_vals), plot_vals_median, plot_vals_median-solar_val[i_p]))
@@ -53,15 +61,29 @@ for i_p in range(len(plot_col)):
     plt.tight_layout()
     plt.subplots_adjust(left=0.1, right=0.97, top=0.95, bottom=0.1)
     # plt.show()
-    plt.savefig('solar_twins_like_'+plot_col[i_p]+'.png', dpi=300)
+    plt.savefig('solar_twins_like_'+plot_col[i_p]+'_'+envel_val+suffix+'.png', dpi=250)
     plt.close()
 
-    plot_vals = cannon_data[plot_col[i_p]][idx_valid_param]
-    plt.scatter(plot_vals, cannon_data['canberra'][idx_valid_param], s=4, lw=0, c='black')
-    plt.tight_layout()
-    # plt.show()
-    plt.savefig('solar_twins_like_' + plot_col[i_p] + '_canberra.png', dpi=300)
-    plt.close()
+    # plot_vals = cannon_data[plot_col[i_p]][idx_valid_param]
+    # plt.scatter(plot_vals, cannon_data['canberra'][idx_valid_param], s=4, lw=0, c='black')
+    # plt.tight_layout()
+    # # plt.show()
+    # plt.savefig('solar_twins_like_' + plot_col[i_p] + '_canberra.png', dpi=300)
+    # plt.close()
+
+ranges = {'Teff_cannon': [5600, 5800], 'Logg_cannon': [4.6, 3.6], 'Fe_H_cannon': [-0.15, 0.15]}
+for snr_col in [s_c for s_c in cannon_data.colnames if 'snr_c' in s_c]:
+    for p_c in plot_col:
+        plt.errorbar(cannon_data[snr_col], cannon_data[p_c], capsize=0, elinewidth=0.75, linewidth=0.5, fmt='o', ms=2, c='red')
+        plt.errorbar(cannon_data[snr_col][idx_valid_param], cannon_data[p_c][idx_valid_param], capsize=0, elinewidth=0.75, linewidth=0.5, fmt='o', ms=2, c='blue')
+        plt.ylabel(p_c)
+        plt.xlabel(snr_col)
+        plt.ylim(ranges[p_c])
+        plt.savefig('solar_twins_like_' + snr_col + '_' + p_c + '_' + envel_val + suffix + '.png', dpi=250)
+        # plt.show()
+        plt.close()
+
+print ','.join([str(s) for s in cannon_data[cannon_data['Logg_cannon'] < 4.2]['sobject_id']])
 
 raise SystemExit
 

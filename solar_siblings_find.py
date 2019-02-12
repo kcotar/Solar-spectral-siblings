@@ -43,24 +43,25 @@ if len(argv) > 1:
             feh_solar_c_MANUAL = np.float64(ref_params[2])
 
 d_wvl = 0.0
-save_plots = False
+save_plots = True
 output_differences = False  # so far available only for the first analysis step
 min_wvl = min_wvl[process_bands-1]
 max_wvl = max_wvl[process_bands-1]
 
-GP_compute = False
+GP_compute = True
 GP_per_element_analysis = True
 save_gp_params = True
 save_gp_median_spectra = True
 save_gp_params_read_append = True
 save_gp_params_read_interpol = False
-n_threads = 10
-n_walkers = np.array([40, 40, 40, 40])[process_bands-1]
-n_steps = np.array([190, 190, 210, 230])[process_bands-1]
+n_threads = 12
+n_walkers = np.array([50, 50, 50, 50])[process_bands-1]
+n_steps = np.array([200, 200, 200, 200])[process_bands-1]
+n_steps_b = np.array([25, 25, 25, 25])[process_bands-1]
 
 # evaluate spectrum
-n_noise_samples = 0
-noise_power = 0
+n_noise_samples = 1000
+noise_power = 0.
 
 # reference solar spectra
 print 'Read reference GALAH Solar spectra'
@@ -76,49 +77,62 @@ else:
 # data-table settings
 data_date = '20180327'
 galah_param_file = 'sobject_iraf_53_reduced_'+data_date+'.fits'
-cannon_param_file = 'sobject_iraf_iDR2_180325_cannon.fits'
+# cannon_date = '180325'
+# cannon_param_file = 'sobject_iraf_iDR2_'+cannon_date+'_cannon.fits'
+cannon_date = '181221'
+cannon_param_file = 'GALAH_iDR3_v1_'+cannon_date+'_cannon.fits'
 
 # select ok objects
 print 'Reading and determining usable twilight flats for Solar statistics determination'
-galah_linelist = Table.read(galah_data_input + 'GALAH_Cannon_linelist_newer.csv')
 galah_param = Table.read(galah_data_input + galah_param_file)
 cannon_param = Table.read(galah_data_input + cannon_param_file)
 # join datasets and add some information to cannon parameters
 cannon_param = join(cannon_param, galah_param['sobject_id','snr_c1_guess','snr_c2_guess','snr_c3_guess','snr_c4_guess'],
-                    keys='sobject_id')
+                    keys='sobject_id', join_type='left')
 
-idx_rows = np.logical_and(galah_param['red_flag'] == 64, galah_param['snr_c2_guess'] > 200)
-idx_rows = np.logical_and(idx_rows, galah_param['flag_guess'] == 0)
-idx_rows = np.logical_and(idx_rows, galah_param['sobject_id'] > 140301000000000)
-
-# same for Cannon
-idx_row_cannon = np.in1d(cannon_param['sobject_id'], galah_param[idx_rows]['sobject_id'])
-idx_row_cannon = np.logical_and(idx_row_cannon, cannon_param['flag_cannon'] == 0)  # only unflagged flats for parameters
-
-teff_solar_c = np.nanmedian(cannon_param[idx_row_cannon]['Teff_cannon'])
-teff_solar_std_c = np.nanstd(cannon_param[idx_row_cannon]['Teff_cannon'])
-logg_solar_c = np.nanmedian(cannon_param[idx_row_cannon]['Logg_cannon'])
-logg_solar_std_c = np.nanstd(cannon_param[idx_row_cannon]['Logg_cannon'])
-feh_solar_c = np.nanmedian(cannon_param[idx_row_cannon]['Fe_H_cannon'])
-feh_solar_std_c = np.nanstd(cannon_param[idx_row_cannon]['Fe_H_cannon'])
-print 'Solar parameters - cannon:', teff_solar_c, '+/-', teff_solar_std_c, ',  ', logg_solar_c, '+/-', logg_solar_std_c, ',  ', feh_solar_c, '+/-', feh_solar_std_c
+# print np.sum(cannon_param['red_flag'] == 64)
+# print np.sum(cannon_param['snr_c2_guess'] > 200)
+# idx_rows = np.logical_and(cannon_param['red_flag'] == 64, cannon_param['snr_c2_guess'] > 200)
+# print np.sum(idx_rows), idx_rows.shape
+# idx_rows = np.logical_and(idx_rows, cannon_param['flag_guess'] == 0)
+# print np.sum(idx_rows), idx_rows.shape
+# idx_rows = np.logical_and(idx_rows, cannon_param['sobject_id'] > 140301000000000)
+# print np.sum(idx_rows), idx_rows.shape
+#
+# # same for Cannon
+# idx_row_cannon = np.in1d(cannon_param['sobject_id'], galah_param[idx_rows]['sobject_id'])
+# # idx_row_cannon = np.logical_and(idx_row_cannon, cannon_param['flag_cannon'] == 0)  # only unflagged flats for parameters
+#
+# print np.sum(idx_row_cannon), len(idx_row_cannon)
+# teff_solar_c = np.nanmedian(cannon_param[idx_row_cannon]['Teff_cannon'])
+# teff_solar_std_c = np.nanstd(cannon_param[idx_row_cannon]['Teff_cannon'])
+# logg_solar_c = np.nanmedian(cannon_param[idx_row_cannon]['Logg_cannon'])
+# logg_solar_std_c = np.nanstd(cannon_param[idx_row_cannon]['Logg_cannon'])
+# feh_solar_c = np.nanmedian(cannon_param[idx_row_cannon]['Fe_H_cannon'])
+# feh_solar_std_c = np.nanstd(cannon_param[idx_row_cannon]['Fe_H_cannon'])
+# print 'Solar parameters - cannon:', teff_solar_c, '+/-', teff_solar_std_c, ',  ', logg_solar_c, '+/-', logg_solar_std_c, ',  ', feh_solar_c, '+/-', feh_solar_std_c
 
 # define different reference values for first rough parameter cut
 if run_unlike_solar:
     teff_solar_c = teff_solar_c_MANUAL
     logg_solar_c = logg_solar_c_MANUAL
     feh_solar_c = feh_solar_c_MANUAL
+else:
+    # Best Solar like parameters until they are available from the Cannon/SME analysis
+    teff_solar_c = 5778.0
+    logg_solar_c = 4.42
+    feh_solar_c = 0.0
 
 # manual parameter selection
-idx_solar_like = (np.abs(cannon_param['Teff_cannon'] - teff_solar_c) <= 275) & \
-                 (np.abs(cannon_param['Logg_cannon'] - logg_solar_c) <= 0.5) & \
-                 (np.abs(cannon_param['Fe_H_cannon'] - feh_solar_c) <= 0.4)
+idx_solar_like = (np.abs(cannon_param['Teff_cannon'] - teff_solar_c) <= 280) & \
+                 (np.abs(cannon_param['Logg_cannon'] - logg_solar_c) <= 0.6) & \
+                 (np.abs(cannon_param['Fe_H_cannon'] - feh_solar_c) <= 0.2)
 # preform flag filtering if needed - later selection is currently implemented
 idx_solar_like = np.logical_and(idx_solar_like, cannon_param['flag_cannon'] >= 0)  # no flagging at this point
 idx_solar_like = np.logical_and(idx_solar_like, np.bitwise_and(cannon_param['red_flag'], 64) == 0)  # only flats are taken out at this point in processing
 # snr selection
 idx_solar_like = np.logical_and(idx_solar_like, cannon_param['snr_c2_guess'] >= 0)  # no snr limits
-idx_solar_like = np.logical_and(idx_solar_like, cannon_param['sobject_id'] > 140301000000000)  # leave out comissoning phase
+idx_solar_like = np.logical_and(idx_solar_like, cannon_param['sobject_id'] > 140301000000000)  # leave out spectra from the comissoning phase
 
 n_solar_like = np.sum(idx_solar_like)
 print 'Spectra like by parameters:', n_solar_like
@@ -191,7 +205,7 @@ if save_gp_median_spectra:
         txt_gp.close()
 
 # predetermined objects in a text file
-list_file = 'final_selection_0.10.txt'
+list_file = 'final_selection_07_envelope.txt'
 if isfile(list_file):
     solar_like_sobjects = []
     txt_o = open(list_file, 'r')
@@ -202,8 +216,6 @@ if isfile(list_file):
     txt_o.close()
     solar_like_sobjects = list(np.hstack(solar_like_sobjects))
     print 'Number of pre-selected objects:', len(solar_like_sobjects)
-
-# solar_like_sobjects = [170206004201399, 160129004701355, 170911002101145,150412002601280,170219001601353,150409002601317,160422002001351,170507010101097,171227005801006]
 
 # random subset objects from parameters selection
 # n_rand = 25
@@ -264,7 +276,7 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
     if not run_unlike_solar:
         solar_wvl, solar_flx = get_solar_data(solar_input_dir, suffix_solar_ref, every_nth=4)
     else:
-        solar_wvl, solar_flx = get_unlikesolar_data(unlike_input_dir, unlike_ref_suffix, every_nth=4)
+        solar_wvl, solar_flx = get_unlikesolar_data(unlike_input_dir, unlike_ref_suffix, every_nth=4, cannon_date=cannon_date)
     idx_cont_px = solar_flx > min_cont_level
     flx_all_abs_res = spectra_resample(flx_all_abs, wvl_all_abs, solar_wvl, k=1)
     idx_cont_px = np.logical_and(idx_cont_px, np.isfinite(flx_all_abs_res))
@@ -291,7 +303,8 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
                                                       every_nth=every_nth_solar_pixel[evaluate_band - 1])
             else:
                 solar_wvl, solar_flx = get_unlikesolar_data(unlike_input_dir, unlike_ref_suffix,
-                                                            every_nth=every_nth_solar_pixel[evaluate_band - 1])
+                                                            every_nth=every_nth_solar_pixel[evaluate_band - 1],
+                                                            cannon_date=cannon_date)
             # band wvl mask
             idx_ref = get_band_mask(solar_wvl, evaluate_band)
             # generate mask of pixels used in comparison
@@ -339,27 +352,32 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
                 # determine kernel parameters trough emcee fit
                 print ' Running emcee'
                 # print 'diff_var/2:', diff_var/2.
-                rad_noise_init = [0.003, 0.005, 0.007, 0.009][evaluate_band - 1]  # start process with different initial values for every band
-                init_guess_l = [diff_var-diff_var/3., rad_noise_init-0.0025, 1e-5,  5., 0.99]
-                init_guess_h = [diff_var+diff_var/3., rad_noise_init+0.0025, 2e-4, 25., 1.01]
+                div_var_log = np.log10(diff_var)
+                rad_noise_init = -2.  # [0.004, 0.006, 0.008, 0.01][evaluate_band - 1]  # start process with different initial values for every band
+                init_guess_l = [div_var_log-0.5, rad_noise_init-1., -5.5,  5., 0.99]
+                init_guess_h = [div_var_log+0.5, rad_noise_init+1., -3.5, 40., 1.01]
                 sampler, fit_res, fit_prob = fit_gp_kernel(init_guess_l, init_guess_h,
                                                            solar_flx[idx_ref], flux_b_res, solar_wvl[idx_ref],
-                                                           nwalkers=n_walkers[i_c], n_threds=n_threads, n_burn=n_steps[i_c],
-                                                           exit_lnp=10, normal_dist_guess=False, n_per_burn=n_steps[i_c])
+                                                           nwalkers=n_walkers[i_c], n_threds=n_threads,
+                                                           n_burn=n_steps_b[i_c], n_run=n_steps[i_c],
+                                                           exit_lnp=10, normal_dist_guess=False, n_per_burn=1000,
+                                                           save_plots=save_plots, path=str(s_obj) + '_gp-lnprob_b' + str(evaluate_band) + '_0-burn.png',
+                                                           data_std=flux_std_b_res)  # use spectral noise in modeling
+                                                           # data_std=None)  # do not use spectral noise in modeling
                 # walker prob plot
                 if save_plots:
                     print(" Plotting walker probabilities")
-                    walkers_prob = sampler.lnprobability/len(flux_b_res)
+                    walkers_prob = sampler.lnprobability
                     for i_w in range(walkers_prob.shape[0]):
                         plt.plot(walkers_prob[i_w, :], lw=0.3)
                     walkers_prob = walkers_prob.flatten()                   # without this correction numpy
                     walkers_prob = walkers_prob[np.isfinite(walkers_prob)]  # percentile may return incorrect -inf value
-                    plt.ylim((np.percentile(walkers_prob, 0.1), np.percentile(walkers_prob, 99.9)))
-                    plt.savefig(str(s_obj) + '_gp-lnprob_b' + str(evaluate_band) + '.png', dpi=250)
+                    plt.ylim((np.percentile(walkers_prob, 0.5), np.percentile(walkers_prob, 99.5)))
+                    plt.savefig(str(s_obj) + '_gp-lnprob_b' + str(evaluate_band) + '_1-run.png', dpi=250)
                     # plt.show()
                     plt.close()
 
-                last_n_steps = 20
+                last_n_steps = 50
                 sampler_chain_vals = sampler.flatchain
                 kernel_fit = np.median(sampler_chain_vals, axis=0)  # flatchain holds parameters of all emcee steps
                 kernel_fit_last_n = np.median(sampler_chain_vals[-last_n_steps*n_walkers[i_c]:, :], axis=0)
@@ -373,7 +391,7 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
                 # corner plot of parameters
                 if save_plots:
                     c_fig = corner.corner(sampler_chain_vals, truths=kernel_fit, quantiles=[0.16, 0.5, 0.84],
-                                          labels=gp_param_labels, bins=30)
+                                          labels=gp_param_labels, bins=30, show_titles=True)
                     c_fig.savefig(str(s_obj) + '_corner_b' + str(evaluate_band) + '.png', dpi=200)
                     plt.close(c_fig)
 
@@ -404,8 +422,8 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
                 plt.plot(solar_flx_corr[1500:2000], c='red', alpha=0.8, lw=0.5)
                 plt.plot(flux_b_res[1500:2000], c='blue', alpha=0.8, lw=0.5)
                 plt.plot(np.median(flux_gp_pred, axis=0)[1500:2000], c='black', alpha=0.8, lw=0.5)
-                # for i_pred in range(20):
-                #     plt.plot(flux_gp_pred[i_pred, :], c='black', alpha=0.1, lw=0.3)
+                for i_pred in range(25):
+                    plt.plot(flux_gp_pred[i_pred, 1500:2000], c='black', alpha=0.2, lw=0.3)
                 plt.ylim((0.4, 1.1))
                 plt.tight_layout()
                 # plt.show()
@@ -449,7 +467,8 @@ for s_obj in solar_like_sobjects[process_obj_begin:process_obj_end]:
                                                       every_nth=every_nth_solar_pixel[evaluate_band - 1])
             else:
                 solar_wvl, solar_flx = get_unlikesolar_data(unlike_input_dir, unlike_ref_suffix,
-                                                            every_nth=every_nth_solar_pixel[evaluate_band - 1])
+                                                            every_nth=every_nth_solar_pixel[evaluate_band - 1],
+                                                            cannon_date=cannon_date)
             # band wvl mask
             idx_ref = get_band_mask(solar_wvl, evaluate_band)
             # generate mask of pixels used in comparison

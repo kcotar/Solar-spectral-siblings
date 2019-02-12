@@ -54,15 +54,16 @@ cannon_params = Table.read(galah_data_input+'sobject_iraf_iDR2_180325_cannon.fit
 # cannon_params = cannon_params[cannon_params['flag_cannon'] >= 0]  # no flagging at this point
 # cannon_params = cannon_params.filled()
 
+results_dir = '/shared/data-camelot/cotar/'
 # define directory with simulations of metrics SNR functions
 # distance/similarity measurements
-# snr_functions_dir = getcwd() + '/' + 'Distances_SNR_models_guesslike-alllines_gauss_oklinesonly' + '/'
-# chdir('Distances_Step1_p0_SNRsamples0_ext0_oklinesonly_G20180327_C180325')
+snr_functions_dir = results_dir + 'Distances_SNR_models_guesslike-alllines_gauss_oklinesonly_withHwings' + '/'
+chdir(results_dir + 'Distances_Step1_p0_SNRsamples0_ext0_oklinesonly_G20180327_C180325_withHwings')
 combined_bands = False
 
-params_str = '6000_4.18_0.00'
-snr_functions_dir = galah_data_input + 'Distances_SNR_models_'+params_str+'_guesslike-alllines_gauss_oklinesonly' + '/'
-chdir(galah_data_input + 'Distances_Step1_p0_SNRsamples0_ext4_oklinesonly_G20180327_C180325_refpar_'+params_str)
+# params_str = '6000_4.18_0.00'
+# snr_functions_dir = galah_data_input + 'Distances_SNR_models_'+params_str+'_guesslike-alllines_gauss_oklinesonly' + '/'
+# chdir(galah_data_input + 'Distances_Step1_p0_SNRsamples0_ext4_oklinesonly_G20180327_C180325_refpar_'+params_str)
 
 # snr_functions_dir = os.getcwd() + '/' + 'Distances_SNR_models_guesslike-alllines_gauss_oklinesonly_origsamp_nonoise' + '/'
 # chdir('Distances_Step2_p0_SNRsamples1000_ext0_oklinesonly_origsamp_G20180327_C180325_comb')
@@ -71,7 +72,7 @@ chdir(galah_data_input + 'Distances_Step1_p0_SNRsamples0_ext4_oklinesonly_G20180
 evaluate_bands = list([1,2,3,4])
 plot_flux_offsets = [0., 0.05, 0.1, 0.15, 0.2]  # [0., 0.04, 0.08, 0.12, 0.16, 0.2]
 snr_multi = 1.
-PLOT_RESULTS = False
+PLOT_RESULTS = True
 
 y_lim_plot = {'braycurtis':0.025, 'canberra':0.025, 'chebyshev':0.25, 'chi2':0.03, 'cityblock':0.045,
               'cosine':0.02, 'minkowski':0.00015, 'sqeuclidean':0.0005, 'wchebyshev':0.3, 'euclidean':0.04}
